@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# 构建产物（仅根目录；vendor 内的 dist 是 Vditor 资源，必须入库）
+/build/
+/dist/
+
+# 运行时数据（用户本地内容，不入库）
+drafts/
+profiles/
+assets/
+history.json
+config.json
+crash.log
+app/config.json
+app/drafts/
+app/profiles/
+app/assets/
+app/history.json
+app/crash.log
+
+# 安装包产物（CI 生成）
+installer/*.exe
+
+# 测试临时文件
+test_*.py
+*.png
+!app/web/**/*.png
+!app/web/**/*.woff*
+*.tmp
+
+# 系统
+Thumbs.db
+.DS_Store

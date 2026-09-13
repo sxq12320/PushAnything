@@ -1,0 +1,50 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build portable exe
+        run: python -m PyInstaller 一键投稿.spec --noconfirm
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" -OutFile inno.exe
+          Start-Process -FilePath .\inno.exe -ArgumentList '/VERYSILENT','/CURRENTUSER','/NORESTART' -Wait
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          & $iscc installer\installer.iss
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yijiantougao
+          path: |
+            dist/*.exe
+            installer/*.exe
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/一键投稿.exe
+            installer/一键投稿_Setup_*.exe
