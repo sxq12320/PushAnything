@@ -683,6 +683,18 @@ body.page-video #videoView { display: flex; }
 }
 .h-empty { text-align: center; color: var(--muted); font-size: 12px; padding: 20px 0 14px; }
 
+/* 无边框窗口缩放热区 */
+.rz { position: fixed; z-index: 9999; }
+.rz.n  { top: 0; left: 14px; right: 14px; height: 6px; cursor: ns-resize; }
+.rz.s  { bottom: 0; left: 14px; right: 14px; height: 6px; cursor: ns-resize; }
+.rz.e  { right: 0; top: 14px; bottom: 14px; width: 6px; cursor: ew-resize; }
+.rz.w  { left: 0; top: 14px; bottom: 14px; width: 6px; cursor: ew-resize; }
+.rz.nw { top: 0; left: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+.rz.ne { top: 0; right: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+.rz.sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+.rz.se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+body.maxed .rz { display: none; }
+
 /* 任务列表（视频模式侧栏） */
 .task-item {
   display: flex; align-items: center; gap: 9px;

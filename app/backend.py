@@ -113,6 +113,32 @@ class Api:
         if self._window:
             self._window.destroy()
 
+    def win_geom(self):
+        """当前窗口几何（物理像素）+ 是否最大化，供前端拖拽缩放。"""
+        w = self._window
+        if not w:
+            return {}
+        try:
+            return {"x": w.x, "y": w.y, "w": w.width, "h": w.height,
+                    "maxed": bool(getattr(self, "_maxed", False))}
+        except Exception:
+            return {}
+
+    def win_rect(self, x, y, w, h):
+        """拖边/贴边布局：设窗口位置与尺寸（物理像素）。"""
+        if not self._window:
+            return
+        if getattr(self, "_maxed", False):
+            try:
+                self._window.restore()
+            except Exception:
+                pass
+            self._maxed = False
+        w = max(int(w), 560)
+        h = max(int(h), 420)
+        self._window.move(int(x), int(y))
+        self._window.resize(int(w), int(h))
+
     def _on_job_event(self, kind, job, msg):
         """队列事件 -> 前端。API 来源任务带前缀。"""
         if kind == "log":
