@@ -1146,6 +1146,28 @@ $("winMax").onclick = toggleMax;
 $("winClose").onclick = () => api && api.win_close();
 document.querySelector(".tb-drag").addEventListener("dblclick", toggleMax);
 
+// 标题栏拖动 → 系统原生移动循环（WM_NCLBUTTONDOWN/HTCAPTION）：
+// 拖到屏幕顶部=最大化，左/右缘=半屏，系统 Snap 全部生效。
+// 捕获阶段拦截并阻断 pywebview easy_drag 的模拟拖动。
+document.addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || !api) return;
+  if (!e.target.closest(".pywebview-drag-region")) return;
+  if (e.target.closest("button, a, input, .tb-btns")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  api.native_drag(e.clientX / window.innerWidth);
+}, true);
+
+// 系统 Snap / 原生最大化不经过 winMaxed 标志——窗口尺寸变化时回读真实状态
+window.addEventListener("resize", async () => {
+  if (!api) return;
+  const g = await api.win_geom();
+  if (g && g.maxed !== undefined) {
+    winMaxed = !!g.maxed;
+    syncMaxedUI();
+  }
+});
+
 // ---- 无边框窗口缩放（拖边缘/角落，逻辑像素） ----
 const RZ_CURSOR = {
   n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize",

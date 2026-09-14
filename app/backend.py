@@ -97,6 +97,14 @@ class Api:
 
     # ---- 无边框窗口控制 ----
 
+    def _is_maxed(self):
+        """真实窗口状态（含系统 Snap 造成的最大化）。"""
+        try:
+            import System.Windows.Forms as WF
+            return self._window.native.WindowState == WF.FormWindowState.Maximized
+        except Exception:
+            return bool(getattr(self, "_maxed", False))
+
     def win_minimize(self):
         if self._window:
             self._window.minimize()
@@ -104,11 +112,12 @@ class Api:
     def win_toggle_max(self):
         if not self._window:
             return
-        if getattr(self, "_maxed", False):
+        if self._is_maxed():
             self._window.restore()
+            self._maxed = False
         else:
             self._window.maximize()
-        self._maxed = not getattr(self, "_maxed", False)
+            self._maxed = True
 
     def win_close(self):
         if self._window:
@@ -121,17 +130,17 @@ class Api:
             return {}
         try:
             return {"x": w.x, "y": w.y, "w": w.width, "h": w.height,
-                    "maxed": bool(getattr(self, "_maxed", False))}
+                    "maxed": self._is_maxed()}
         except Exception:
             return {}
 
     def _unmax(self):
-        if getattr(self, "_maxed", False):
+        if self._is_maxed():
             try:
                 self._window.restore()
             except Exception:
                 pass
-            self._maxed = False
+        self._maxed = False
 
     def win_rect(self, x, y, w, h):
         """贴边布局：设窗口位置与尺寸（逻辑像素）。"""
@@ -155,6 +164,40 @@ class Api:
         fx = FixPoint.EAST if "w" in dir else FixPoint.WEST
         fy = FixPoint.SOUTH if "n" in dir else FixPoint.NORTH
         self._window.resize(w, h, fix_point=fx | fy)
+
+    def native_drag(self, ratio=0.5):
+        """标题栏拖动：转交系统原生移动循环（WM_NCLBUTTONDOWN/HTCAPTION），
+        获得 Aero Snap：拖到屏幕顶部=最大化，左/右缘=半屏。
+        ratio = 点击处在标题栏中的横向比例，用于最大化下先还原再拖动。"""
+        w = self._window
+        if not w:
+            return
+        import ctypes
+        u = ctypes.windll.user32
+        try:
+            hwnd = w.native.Handle.ToInt32()
+        except Exception:
+            return
+        if self._is_maxed():
+            class _PT(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+            pt = _PT()
+            u.GetCursorPos(ctypes.byref(pt))
+            scale = (u.GetDpiForWindow(hwnd) or 96) / 96.0
+            cx, cy = pt.x / scale, pt.y / scale
+            self._unmax()
+            r = max(0.0, min(1.0, float(ratio or 0.5)))
+            w.move(int(cx - w.width * r), int(cy - 16))
+
+        def _do():
+            u.ReleaseCapture()
+            u.SendMessageW(hwnd, 0xA1, 2, 0)  # WM_NCLBUTTONDOWN, HTCAPTION
+
+        try:
+            from System import Action
+            w.native.Invoke(Action(_do))
+        except Exception:
+            _do()
 
     def _on_job_event(self, kind, job, msg):
         """队列事件 -> 前端。API 来源任务带前缀。"""
