@@ -42,7 +42,8 @@ def main():
         height=880,
         min_size=(1100, 700),
         frameless=True,
-    )
+        easy_drag=False,   # 关掉 JS 模拟拖动——它在任意位置拖都会移动窗口，
+    )                      # 且抢占文本选择；标题栏拖动走 native_drag 原生循环
     api.bind(win)
     win.events.shown += lambda *a: api.setup_native()
     webview.start()
