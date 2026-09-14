@@ -952,11 +952,25 @@ async function openSettings() {
   $("cfgApiOn").checked = !!cfg.api_enabled;
   $("cfgApiPort").value = cfg.api_port || 8737;
   $("cfgApiToken").value = cfg.api_token || "";
+  $("cfgApiLan").checked = cfg.api_lan !== false;
   $("cfgDataDir").value = cfg.data_dir || "";
   $("cfgWxConfig").value = cfg.wechat_config || "";
   $("feishuTestRes").textContent = "";
   $("settingsMsg").textContent = "";
   $("settingsMask").classList.remove("hidden");
+  loadMobileInfo();
+}
+
+async function loadMobileInfo() {
+  const m = await api.mobile_url();
+  $("mobileUrl").value = m.url;
+  const qr = await api.mobile_qr();
+  const img = $("mobileQr");
+  if (qr.ok) { img.src = qr.qr; img.style.display = "block"; }
+  else img.style.display = "none";
+  if (!m.enabled) $("mobileUrlText").textContent = "本地 API 未启用，手机端不可用。";
+  else if (!m.lan) $("mobileUrlText").textContent = "局域网访问已关闭，勾选上方选项后重启生效。";
+  else $("mobileUrlText").textContent = "手机与电脑连同一 WiFi，扫码或输入网址即可投稿。";
 }
 
 function closeSettings() { $("settingsMask").classList.add("hidden"); }
@@ -973,6 +987,7 @@ async function saveSettings() {
     api_enabled: $("cfgApiOn").checked,
     api_port: parseInt($("cfgApiPort").value, 10) || 8737,
     api_token: $("cfgApiToken").value.trim(),
+    api_lan: $("cfgApiLan").checked,
     wechat_config: $("cfgWxConfig").value.trim(),
   });
   $("author").value = r.author || "";

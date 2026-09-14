@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>PushAnything · 手机端</title>
+<style>
+:root {
+  --accent: #0071E3; --accent-soft: rgba(0,113,227,.12);
+  --ink: #1D1D1F; --muted: #86868B; --hairline: rgba(0,0,0,.08);
+  --ease: cubic-bezier(.32,.72,0,1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  background: linear-gradient(175deg,#FBFCFE,#EFF2F7); color: var(--ink);
+  display: flex; flex-direction: column; overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+header {
+  padding: calc(env(safe-area-inset-top) + 14px) 18px 12px;
+  background: rgba(250,251,254,.85); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--hairline); flex-shrink: 0;
+}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+.brand .ic {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: linear-gradient(135deg,#4DA3FF,#0047C7); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.brand small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 2px; }
+nav {
+  display: flex; gap: 4px; margin-top: 12px; padding: 3px;
+  background: rgba(0,0,0,.06); border-radius: 10px;
+}
+nav button {
+  flex: 1; border: 0; border-radius: 8px; padding: 7px 0; font-size: 13.5px;
+  background: transparent; color: var(--ink); font-weight: 500;
+  font-family: inherit; transition: all .2s var(--ease);
+}
+nav button.on { background: #fff; font-weight: 650; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px; }
+.page { display: none; animation: in .3s var(--ease); }
+.page.on { display: block; }
+@keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+
+.card {
+  background: rgba(255,255,255,.9); border-radius: 14px; padding: 14px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+  margin-bottom: 14px;
+}
+.lbl { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 6px; display: block; }
+input[type=text], textarea {
+  width: 100%; border: 0; background: rgba(0,0,0,.045); border-radius: 10px;
+  padding: 11px 12px; font-size: 15px; font-family: inherit; color: var(--ink);
+  outline: none; margin-bottom: 12px; -webkit-appearance: none;
+}
+textarea { min-height: 200px; resize: vertical; line-height: 1.55; }
+input:focus, textarea:focus { background: #fff; box-shadow: 0 0 0 3px rgba(0,113,227,.16); }
+
+.plats { display: flex; gap: 8px; margin: 4px 0 14px; flex-wrap: wrap; }
+.plat {
+  padding: 8px 14px; border-radius: 999px; font-size: 13.5px; font-weight: 550;
+  background: rgba(0,0,0,.05); color: var(--ink); border: 0; font-family: inherit;
+  transition: all .18s var(--ease);
+}
+.plat.on { background: var(--accent); color: #fff; box-shadow: 0 3px 10px rgba(0,113,227,.3); }
+
+.btn {
+  width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 16px;
+  font-weight: 650; background: var(--accent); color: #fff; font-family: inherit;
+  box-shadow: 0 6px 18px rgba(0,113,227,.3); transition: transform .15s var(--ease);
+}
+.btn:active { transform: scale(.97); }
+.btn[disabled] { opacity: .5; }
+
+.a-item {
+  display: flex; align-items: center; gap: 10px; padding: 13px 14px;
+  background: rgba(255,255,255,.9); border-radius: 12px; margin-bottom: 8px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.05); border: 1.5px solid transparent;
+}
+.a-item.sel { border-color: var(--accent); background: #fff; }
+.a-item .t { flex: 1; font-size: 14.5px; font-weight: 550; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.a-item .s { font-size: 11.5px; color: var(--muted); }
+
+.j-item {
+  background: rgba(255,255,255,.9); border-radius: 12px; padding: 12px 14px;
+  margin-bottom: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.05);
+}
+.j-top { display: flex; align-items: center; gap: 8px; }
+.j-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.j-dot.done { background: #34C759; } .j-dot.error { background: #FF3B30; }
+.j-dot.running { background: #0071E3; animation: pl 1s infinite alternate; }
+.j-dot.queued { background: #C7C7CC; }
+@keyframes pl { to { opacity: .3; } }
+.j-title { flex: 1; font-size: 14px; font-weight: 550; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.j-time { font-size: 11px; color: var(--muted); }
+.j-plats { margin-top: 7px; display: flex; gap: 5px; flex-wrap: wrap; }
+.j-p { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(0,0,0,.05); }
+.j-p.ok { background: rgba(52,199,89,.14); color: #1D9B45; }
+.j-p.fail { background: rgba(255,59,48,.13); color: #D70015; }
+.j-p.run { background: var(--accent-soft); color: #0057B8; }
+.j-logs { margin-top: 8px; font-size: 11px; color: var(--muted); white-space: pre-wrap;
+  max-height: 140px; overflow-y: auto; background: rgba(0,0,0,.03); border-radius: 8px; padding: 8px; }
+
+.empty { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 0; line-height: 1.8; }
+.hint { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.7; }
+#toast {
+  position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%);
+  background: rgba(29,29,31,.92); color: #fff; font-size: 13.5px;
+  padding: 10px 18px; border-radius: 999px; opacity: 0; pointer-events: none;
+  transition: opacity .25s, transform .25s var(--ease); max-width: 84vw; text-align: center;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+#tkBar { display: none; }
+#tkBar.on { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="ic">✒</span>PushAnything<small>手机端</small></div>
+  <nav>
+    <button data-p="write" class="on">写稿</button>
+    <button data-p="pick">选稿</button>
+    <button data-p="tasks">任务</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 写稿 -->
+  <div class="page on" id="p-write">
+    <div class="card" id="tkBar">
+      <span class="lbl">访问令牌（API Token，设置了才需要）</span>
+      <input type="text" id="tk" placeholder="设置 → 本地接口里的 Token">
+    </div>
+    <div class="card">
+      <input type="text" id="title" placeholder="文章标题">
+      <textarea id="md" placeholder="Markdown 正文…（支持 $公式$、图片链接、表格）"></textarea>
+      <input type="text" id="author" placeholder="作者（可空）">
+      <input type="text" id="digest" placeholder="摘要（可空）">
+      <span class="lbl">投稿到</span>
+      <div class="plats">
+        <button class="plat on" data-p="wechat">公众号</button>
+        <button class="plat" data-p="zhihu">知乎</button>
+        <button class="plat" data-p="toutiao">头条</button>
+      </div>
+      <button class="btn" id="go">上传到草稿箱</button>
+    </div>
+    <div class="hint">内容投递到电脑端队列，由电脑上的浏览器完成填稿<br>正式发布在各平台后台手动操作</div>
+  </div>
+
+  <!-- 选稿 -->
+  <div class="page" id="p-pick">
+    <span class="lbl" style="margin:2px 4px 10px">选择已保存的文章，直接投递</span>
+    <div id="alist"></div>
+    <div class="card" id="pickCtl" style="display:none">
+      <div class="plats">
+        <button class="plat on" data-p="wechat">公众号</button>
+        <button class="plat" data-p="zhihu">知乎</button>
+        <button class="plat" data-p="toutiao">头条</button>
+      </div>
+      <button class="btn" id="goPick">投递所选文章</button>
+    </div>
+  </div>
+
+  <!-- 任务 -->
+  <div class="page" id="p-tasks">
+    <div id="jlist"></div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+let token = localStorage.getItem("pa_token") || "";
+let selArticle = null;
+let jOpen = null;
+
+function toast(m, ms=2600) {
+  const t = $("toast"); t.textContent = m; t.classList.add("on");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("on"), ms);
+}
+
+async function call(path, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({"Content-Type": "application/json"},
+                              token ? {"X-Token": token} : {});
+  const r = await fetch(path, opts);
+  if (r.status === 401) { $("tkBar").classList.add("on"); throw new Error("需要 Token"); }
+  return r.json();
+}
+
+$("tk").value = token;
+$("tk").addEventListener("change", e => {
+  token = e.target.value.trim();
+  localStorage.setItem("pa_token", token);
+  toast("Token 已保存");
+});
+
+// tabs
+document.querySelectorAll("nav button").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll("nav button").forEach(x => x.classList.remove("on"));
+    document.querySelectorAll(".page").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    $("p-" + b.dataset.p).classList.add("on");
+    if (b.dataset.p === "pick") loadArticles();
+    if (b.dataset.p === "tasks") loadTasks();
+  };
+});
+
+// platform pills（写稿页和选稿页各一组）
+document.querySelectorAll(".plats").forEach(g => {
+  g.querySelectorAll(".plat").forEach(b =>
+    b.onclick = () => b.classList.toggle("on"));
+});
+function pickedPlats(group) {
+  return [...group.querySelectorAll(".plat.on")].map(b => b.dataset.p);
+}
+
+// 写稿投递
+$("go").onclick = async () => {
+  const title = $("title").value.trim(), md = $("md").value;
+  if (!title) return toast("标题不能为空");
+  if (!md.trim()) return toast("正文不能为空");
+  const plats = pickedPlats(document.querySelector("#p-write .plats"));
+  if (!plats.length) return toast("至少选一个平台");
+  $("go").disabled = true;
+  try {
+    const r = await call("/api/article", {method: "POST", body: JSON.stringify({
+      title, md, author: $("author").value.trim(),
+      digest: $("digest").value.trim(), platforms: plats,
+    })});
+    if (r.ok) { toast("已投递到电脑队列"); switchTab("tasks"); }
+    else toast(r.err || r.msg || "投递失败");
+  } catch (e) { toast(e.message); }
+  $("go").disabled = false;
+};
+
+function switchTab(p) {
+  document.querySelector(`nav button[data-p="${p}"]`).click();
+}
+
+// 选稿
+async function loadArticles() {
+  const box = $("alist");
+  box.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const r = await call("/api/articles");
+    const list = r.articles || [];
+    if (!list.length) { box.innerHTML = '<div class="empty">电脑上还没有已保存的文章</div>'; return; }
+    box.innerHTML = "";
+    list.forEach(a => {
+      const d = document.createElement("div");
+      d.className = "a-item" + (selArticle && selArticle.rel === a.rel ? " sel" : "");
+      const t = document.createElement("span");
+      t.className = "t"; t.textContent = a.title || a.rel;
+      const s = document.createElement("span");
+      s.className = "s"; s.textContent = a.folder || "";  // textContent 已转义
+      d.appendChild(t); d.appendChild(s);
+      d.onclick = () => {
+        selArticle = a;
+        box.querySelectorAll(".a-item").forEach(x => x.classList.remove("sel"));
+        d.classList.add("sel");
+        $("pickCtl").style.display = "block";
+      };
+      box.appendChild(d);
+    });
+  } catch (e) { box.innerHTML = '<div class="empty">' + e.message + "</div>"; }
+}
+
+$("goPick").onclick = async () => {
+  if (!selArticle) return toast("先选一篇文章");
+  const plats = pickedPlats(document.querySelector("#pickCtl .plats"));
+  if (!plats.length) return toast("至少选一个平台");
+  $("goPick").disabled = true;
+  try {
+    const a = selArticle;
+    const r = await call("/api/article", {method: "POST", body: JSON.stringify({
+      title: a.title, md: a.md, author: a.author, digest: a.digest,
+      cover_path: a.cover_path, style: a.style, platforms: plats,
+    })});
+    if (r.ok) { toast("已投递到电脑队列"); switchTab("tasks"); }
+    else toast(r.err || r.msg || "投递失败");
+  } catch (e) { toast(e.message); }
+  $("goPick").disabled = false;
+};
+
+// 任务
+const PLAT = {wechat: "公众号", zhihu: "知乎", toutiao: "头条", feishu: "飞书"};
+const KIND = {article: "图文", video: "视频", feishu: "飞书"};
+const STXT = {queued: "排队", running: "执行中", done: "完成", error: "失败"};
+function fmtT(ts) {
+  const d = new Date(ts * 1000);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+async function loadTasks() {
+  const box = $("jlist");
+  try {
+    const r = await call("/api/tasks");
+    const list = (r.tasks || []).filter(j => j.kind !== "feishu");
+    if (!list.length) { box.innerHTML = '<div class="empty">还没有任务</div>'; return; }
+    box.innerHTML = "";
+    list.forEach(j => {
+      const d = document.createElement("div");
+      d.className = "j-item";
+      const plats = (j.platforms || []).map(p => {
+        const res = (j.results || {})[p];
+        const cls = res ? (res.ok ? "ok" : "fail") : (j.status === "running" ? "run" : "");
+        return `<span class="j-p ${cls}">${PLAT[p] || p}</span>`;
+      }).join("");
+      d.innerHTML =
+        `<div class="j-top"><span class="j-dot ${esc(j.status)}"></span>` +
+        `<span class="j-title">${esc(j.title || "（无标题）")}</span>` +
+        `<span class="j-time">${esc(KIND[j.kind] || j.kind)} · ${esc(STXT[j.status] || j.status)}</span></div>` +
+        (plats ? `<div class="j-plats">${plats}</div>` : "") +
+        (jOpen === j.id && (j.logs || []).length ?
+          `<div class="j-logs">${esc((j.logs || []).join("\n"))}</div>` : "");
+      d.onclick = () => { jOpen = jOpen === j.id ? null : j.id; loadTasks(); };
+      box.appendChild(d);
+    });
+  } catch (e) { box.innerHTML = '<div class="empty">' + e.message + "</div>"; }
+}
+
+// 任务页轮询（有任务执行中时自动刷新）
+setInterval(() => {
+  if ($("p-tasks").classList.contains("on")) loadTasks();
+}, 5000);
+</script>
+</body>
+</html>

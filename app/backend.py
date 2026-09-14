@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
     "api_enabled": True,
     "api_port": 8737,
     "api_token": "",
+    "api_lan": True,
     "wechat_style": "red",
     "feishu_enabled": False,
     "feishu_app_id": "",
@@ -572,4 +573,41 @@ class Api:
             "port": int(cfg.get("api_port", 8737)),
             "running": api_server._server is not None,
             "auth": bool(cfg.get("api_token")),
+            "lan": bool(cfg.get("api_lan", True)),
         }
+
+    # ---------- 手机端（局域网网页） ----------
+
+    def _lan_ip(self):
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))   # 不实际发包，只为拿到出口网卡 IP
+            return s.getsockname()[0]
+        except Exception:
+            return "127.0.0.1"
+        finally:
+            s.close()
+
+    def mobile_url(self):
+        cfg = load_config()
+        url = f"http://{self._lan_ip()}:{int(cfg.get('api_port', 8737))}/m"
+        return {"url": url, "token": cfg.get("api_token") or "",
+                "lan": bool(cfg.get("api_lan", True)),
+                "enabled": bool(cfg.get("api_enabled"))}
+
+    def mobile_qr(self):
+        """生成手机端地址的二维码，返回 PNG data URL。"""
+        try:
+            import base64, io
+            import qrcode
+            img = qrcode.make(self.mobile_url()["url"])
+            buf = io.BytesIO()
+            img.save(buf, "PNG")
+            return {"ok": True,
+                    "qr": "data:image/png;base64," +
+                          base64.b64encode(buf.getvalue()).decode()}
+        except ImportError:
+            return {"ok": False, "msg": "未安装 qrcode"}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)}

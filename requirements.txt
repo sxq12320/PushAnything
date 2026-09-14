@@ -2,6 +2,7 @@ pywebview==6.2.1
 playwright==1.62.0
 Markdown==3.10.3
 pillow==12.3.0
+qrcode==8.2
 requests==2.34.2
 matplotlib==3.11.2
 pyinstaller==6.22.3

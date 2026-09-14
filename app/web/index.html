@@ -368,6 +368,20 @@
         <span class="lbl">Token</span>
         <input id="cfgApiToken" class="inp" style="flex:1" placeholder="留空不鉴权">
       </div>
+      <label class="set-row chk-line">
+        <input type="checkbox" id="cfgApiLan" checked>
+        <span>允许局域网访问（手机同 WiFi 扫码投稿）</span>
+      </label>
+
+      <div class="sec-t">手机端</div>
+      <div class="set-row" style="align-items:flex-start;gap:14px">
+        <img id="mobileQr" alt="" style="width:112px;height:112px;border-radius:12px;background:#fff;border:1px solid rgba(0,0,0,.08);display:none">
+        <div style="flex:1;min-width:0">
+          <div class="hint set-hint" id="mobileUrlText" style="margin-top:0">手机与电脑连同一 WiFi，扫码或输入网址即可投稿。</div>
+          <input id="mobileUrl" class="inp" readonly style="font-size:12px;margin-top:6px" onclick="this.select()">
+          <div class="hint set-hint">首次连接可能弹防火墙提示，选"允许"。若设置了 Token，手机端首次打开时填一次即可。</div>
+        </div>
+      </div>
     </div>
     <div class="sheet-foot">
       <span id="settingsMsg" class="hint"></span>

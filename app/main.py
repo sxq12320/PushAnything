@@ -22,7 +22,8 @@ def start_api_server():
         return None
     try:
         srv = api_server.start(int(cfg.get("api_port", 8737)),
-                               cfg.get("api_token") or "")
+                               cfg.get("api_token") or "",
+                               lan=bool(cfg.get("api_lan", True)))
         print(f"[api] 本地接口已启动: http://127.0.0.1:{cfg.get('api_port', 8737)}/api")
         return srv
     except Exception as e:

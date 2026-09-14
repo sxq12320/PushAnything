@@ -70,6 +70,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_html(self, code, html):
+        body = html.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _auth_ok(self):
         if not Handler.token:
             return True
@@ -89,13 +97,17 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- 路由 ----
     def do_GET(self):
+        p = self.path.split("?")[0].rstrip("/")
+        if p == "/m":      # 手机端静态页不鉴权；其内部 API 调用仍走 X-Token
+            return self._send_html(200, _mobile_page())
         if not self._auth_ok():
             return self._send(401, {"ok": False, "err": "unauthorized"})
-        p = self.path.split("?")[0].rstrip("/")
         if p in ("", "/api"):
             return self._send(200, _doc())
         if p == "/api/health":
             return self._send(200, {"ok": True, "version": VERSION})
+        if p == "/api/articles":
+            return self._send(200, {"ok": True, "articles": _list_articles()})
         if p == "/api/tasks":
             return self._send(200, {"ok": True, "tasks": jobs.queue.recent()})
         if p.startswith("/api/tasks/"):
@@ -163,11 +175,60 @@ class Handler(BaseHTTPRequestHandler):
                                 "status": job.status})
 
 
-def start(port, token=""):
+def _mobile_page():
+    """手机端页面（/m）。静态页本身不鉴权，API 调用仍走 X-Token。"""
+    import os
+    import paths
+    p = os.path.join(paths.WEB_DIR, "mobile.html")
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return "<h1>mobile.html missing</h1>"
+
+
+def _list_articles():
+    """手机端文章列表：扫 DRAFTS_DIR 下 .md + 同名 .json 元信息。"""
+    import os
+    import paths
+    out = []
+    for root, _dirs, files in os.walk(paths.DRAFTS_DIR):
+        for fn in files:
+            if not fn.endswith(".md"):
+                continue
+            md = os.path.join(root, fn)
+            slug = os.path.splitext(fn)[0]
+            folder = os.path.relpath(root, paths.DRAFTS_DIR)
+            folder = "" if folder == "." else folder.replace("\\", "/")
+            rel = f"{folder}/{slug}" if folder else slug
+            meta_p = os.path.splitext(md)[0] + ".json"
+            meta = {}
+            try:
+                with open(meta_p, encoding="utf-8") as f:
+                    meta = json.load(f)
+            except Exception:
+                pass
+            try:
+                md_txt = open(md, encoding="utf-8").read()
+            except Exception:
+                md_txt = ""
+            out.append({"rel": rel, "title": meta.get("title") or slug,
+                        "folder": folder, "md": md_txt,
+                        "author": meta.get("author", ""),
+                        "digest": meta.get("digest", ""),
+                        "cover_path": meta.get("cover_path", ""),
+                        "style": meta.get("style", ""),
+                        "mtime": os.path.getmtime(md)})
+    out.sort(key=lambda a: a["mtime"], reverse=True)
+    return out
+
+
+def start(port, token="", lan=False):
     global _server
     if _server:
         return _server
     Handler.token = token or ""
-    _server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    host = "0.0.0.0" if lan else "127.0.0.1"
+    _server = ThreadingHTTPServer((host, port), Handler)
     threading.Thread(target=_server.serve_forever, daemon=True).start()
     return _server
