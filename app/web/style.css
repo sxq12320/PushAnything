@@ -694,6 +694,11 @@ body.page-video #videoView { display: flex; }
 .rz.sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
 .rz.se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
 body.maxed .rz { display: none; }
+body.resizing { user-select: none; }
+body.resizing *, body.resizing *::before, body.resizing *::after {
+  transition: none !important;
+  animation: none !important;
+}
 
 /* 任务列表（视频模式侧栏） */
 .task-item {

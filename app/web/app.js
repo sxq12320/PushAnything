@@ -1066,54 +1066,65 @@ $("winMax").onclick = toggleMax;
 $("winClose").onclick = () => api && api.win_close();
 document.querySelector(".tb-drag").addEventListener("dblclick", toggleMax);
 
-// ---- 无边框窗口缩放（拖边缘/角落） ----
-const DPR = () => window.devicePixelRatio || 1;
+// ---- 无边框窗口缩放（拖边缘/角落，逻辑像素） ----
+const RZ_CURSOR = {
+  n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize",
+  nw: "nwse-resize", se: "nwse-resize", ne: "nesw-resize", sw: "nesw-resize",
+};
 let rzDrag = null, rzRaf = 0, rzRect = null;
 
+function rzEnd() {
+  rzDrag = null; rzRect = null;
+  document.body.classList.remove("resizing");
+  document.body.style.cursor = "";
+}
+
 document.querySelectorAll(".rz").forEach((el) => {
-  el.addEventListener("mousedown", async (e) => {
+  el.addEventListener("pointerdown", async (e) => {
     if (!api || winMaxed) return;
     const g = await api.win_geom();
     if (!g || g.maxed) return;
     rzDrag = { dir: el.className.split(" ")[1], sx: e.screenX, sy: e.screenY, g };
+    document.body.classList.add("resizing");
+    document.body.style.cursor = RZ_CURSOR[rzDrag.dir] || "";
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
   });
 });
 
-document.addEventListener("mousemove", (e) => {
+document.addEventListener("pointermove", (e) => {
   if (!rzDrag) return;
-  const d = DPR();
-  const dx = (e.screenX - rzDrag.sx) * d, dy = (e.screenY - rzDrag.sy) * d;
-  const g = rzDrag.g;
-  let { x, y, w, h } = g;
-  if (rzDrag.dir.indexOf("e") >= 0) w = g.w + dx;
-  if (rzDrag.dir.indexOf("s") >= 0) h = g.h + dy;
-  if (rzDrag.dir.indexOf("w") >= 0) { w = g.w - dx; x = g.x + dx; }
-  if (rzDrag.dir.indexOf("n") >= 0) { h = g.h - dy; y = g.y + dy; }
-  if (w < 560) { if (rzDrag.dir.indexOf("w") >= 0) x = g.x + g.w - 560; w = 560; }
-  if (h < 420) { if (rzDrag.dir.indexOf("n") >= 0) y = g.y + g.h - 420; h = 420; }
-  rzRect = [x, y, w, h];
+  const dx = e.screenX - rzDrag.sx, dy = e.screenY - rzDrag.sy;
+  const g = rzDrag.g, dir = rzDrag.dir;
+  let w = g.w, h = g.h;
+  if (dir.indexOf("e") >= 0) w = g.w + dx;
+  if (dir.indexOf("s") >= 0) h = g.h + dy;
+  if (dir.indexOf("w") >= 0) w = g.w - dx;
+  if (dir.indexOf("n") >= 0) h = g.h - dy;
+  rzRect = [Math.max(560, Math.round(w)), Math.max(420, Math.round(h)), dir];
   if (!rzRaf) rzRaf = requestAnimationFrame(() => {
     rzRaf = 0;
-    if (rzRect) api.win_rect(rzRect[0], rzRect[1], rzRect[2], rzRect[3]);
+    if (rzRect) api.win_resize(rzRect[0], rzRect[1], rzRect[2]);
   });
 });
-document.addEventListener("mouseup", () => { rzDrag = null; rzRect = null; });
+document.addEventListener("pointerup", rzEnd);
+document.addEventListener("pointercancel", rzEnd);
+window.addEventListener("blur", rzEnd);
 
 // 标题栏右键 → 贴边布局（左半屏/右半屏/上半屏/最大化）
 document.querySelector("#titlebar").addEventListener("contextmenu", async (e) => {
   if (!api || e.target.closest(".tb-btn")) return;
   e.preventDefault();
-  const d = DPR();
-  const sw = screen.availWidth * d, sh = screen.availHeight * d;
+  const sw = screen.availWidth, sh = screen.availHeight;
+  const sl = screen.availLeft || 0, st = screen.availTop || 0;
   const snap = (x, y, w, h) => {
     api.win_rect(x, y, w, h);
     winMaxed = false; syncMaxedUI();
   };
   showMenu(e.clientX, e.clientY, [
-    { label: "左半屏", fn: () => snap(0, 0, sw / 2, sh) },
-    { label: "右半屏", fn: () => snap(sw / 2, 0, sw / 2, sh) },
-    { label: "上半屏", fn: () => snap(0, 0, sw, sh / 2) },
+    { label: "左半屏", fn: () => snap(sl, st, sw / 2, sh) },
+    { label: "右半屏", fn: () => snap(sl + sw / 2, st, sw / 2, sh) },
+    { label: "上半屏", fn: () => snap(sl, st, sw, sh / 2) },
     { sep: 1 },
     { label: winMaxed ? "还原窗口" : "最大化", fn: toggleMax },
   ]);

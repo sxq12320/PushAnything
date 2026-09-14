@@ -124,20 +124,36 @@ class Api:
         except Exception:
             return {}
 
-    def win_rect(self, x, y, w, h):
-        """拖边/贴边布局：设窗口位置与尺寸（物理像素）。"""
-        if not self._window:
-            return
+    def _unmax(self):
         if getattr(self, "_maxed", False):
             try:
                 self._window.restore()
             except Exception:
                 pass
             self._maxed = False
+
+    def win_rect(self, x, y, w, h):
+        """贴边布局：设窗口位置与尺寸（逻辑像素）。"""
+        if not self._window:
+            return
+        self._unmax()
         w = max(int(w), 560)
         h = max(int(h), 420)
         self._window.move(int(x), int(y))
         self._window.resize(int(w), int(h))
+
+    def win_resize(self, w, h, dir=""):
+        """拖边缩放：单次 SetWindowPos，fix_point 钉住对侧边缘。"""
+        if not self._window:
+            return
+        self._unmax()
+        w = max(int(w), 560)
+        h = max(int(h), 420)
+        from webview.platforms.winforms import FixPoint
+        dir = str(dir)
+        fx = FixPoint.EAST if "w" in dir else FixPoint.WEST
+        fy = FixPoint.SOUTH if "n" in dir else FixPoint.NORTH
+        self._window.resize(w, h, fix_point=fx | fy)
 
     def _on_job_event(self, kind, job, msg):
         """队列事件 -> 前端。API 来源任务带前缀。"""
