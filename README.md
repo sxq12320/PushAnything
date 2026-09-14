@@ -1,19 +1,19 @@
-# 一键投稿
+# PushAnything
 
 Markdown 写文章，一键上传到 **公众号 / 知乎 / 头条** 三个平台的草稿箱（只进草稿，不发布）。
 也支持**视频投稿**（知乎 / 头条）。
 
 ## 安装
 
-- **安装版**（推荐）：运行 `一键投稿_Setup_x.x.x.exe`，装到 `%LOCALAPPDATA%\Programs\一键投稿`，
+- **安装版**（推荐）：运行 `PushAnything_Setup_x.x.x.exe`，装到 `%LOCALAPPDATA%\Programs\PushAnything`，
   自带开始菜单/桌面快捷方式和卸载程序，无需管理员权限
-- **绿色版**：直接运行 `一键投稿.exe`，数据保存在 exe 同级目录（可在 设置→数据存储 里改到任意位置）
+- **绿色版**：直接运行 `PushAnything.exe`，数据保存在 exe 同级目录（可在 设置→数据存储 里改到任意位置）
 
 两种方式的写作数据都可通过「数据存储」设置迁移到自定义目录。
 
 ## 使用
 
-安装版从开始菜单/桌面启动；绿色版双击 `一键投稿.exe`。
+安装版从开始菜单/桌面启动；绿色版双击 `PushAnything.exe`。
 
 ### 页面结构
 
@@ -100,7 +100,7 @@ Markdown 写文章，一键上传到 **公众号 / 知乎 / 头条** 三个平�
 ## 本地 API（给其他软件/脚本调用）
 
 软件运行时自动启动本地接口：`http://127.0.0.1:8737/api`（仅本机，端口可在 `config.json` 改 `api_port`，`api_enabled:false` 关闭，`api_token` 设置后请求需带 `X-Token` 头）。
-侧栏底部会显示 API 运行状态。也可无窗口纯服务运行：`一键投稿.exe --serve`
+侧栏底部会显示 API 运行状态。也可无窗口纯服务运行：`PushAnything.exe --serve`
 
 ### 接口
 
@@ -186,7 +186,7 @@ build_installer.bat
 
 ## License
 
-MIT © 一键投稿 contributors
+MIT © PushAnything contributors
 
 源码在 `app\`：`main.py` 入口、`backend.py` 前后端桥、`mdconvert.py` Markdown转换、
 `wechat_push.py` 公众号API、`zhihu_push.py`/`toutiao_push.py` 浏览器自动化、`browser.py` 自动化工具、

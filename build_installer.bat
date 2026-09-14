@@ -8,4 +8,4 @@ if not exist "%ISCC%" set ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe
 if not exist "%ISCC%" (echo [x] 未找到 Inno Setup，请先安装 & exit /b 1)
 "%ISCC%" installer\installer.iss || exit /b 1
 echo.
-echo [OK] dist\一键投稿.exe  +  installer\一键投稿_Setup_*.exe
+echo [OK] dist\PushAnything.exe  +  installer\PushAnything_Setup_*.exe

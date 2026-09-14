@@ -19,7 +19,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build portable exe
-        run: python -m PyInstaller 一键投稿.spec --noconfirm
+        run: python -m PyInstaller PushAnything.spec --noconfirm
 
       - name: Install Inno Setup
         shell: pwsh
@@ -46,5 +46,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/一键投稿.exe
-            installer/一键投稿_Setup_*.exe
+            dist/PushAnything.exe
+            installer/PushAnything_Setup_*.exe

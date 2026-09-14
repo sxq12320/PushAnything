@@ -611,7 +611,7 @@ function updateCoverThumb() {
 
 let videoPath = "";
 
-const PAGE_TITLE = { home: "一键投稿", write: null, publish: "发布文章", video: "视频投稿" };
+const PAGE_TITLE = { home: "PushAnything", write: null, publish: "发布文章", video: "视频投稿" };
 function setPage(p) {
   page = p;
   document.body.className = document.body.className

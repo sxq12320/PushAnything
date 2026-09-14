@@ -1,10 +1,10 @@
-; installer.iss — 一键投稿 Inno Setup 安装脚本
-; 构建：先跑 build.bat 生成 dist\一键投稿.exe，再用 ISCC 编译本脚本
+; installer.iss — PushAnything Inno Setup 安装脚本
+; 构建：先跑 build.bat 生成 dist\PushAnything.exe，再用 ISCC 编译本脚本
 ;   "C:\Users\33836\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer\installer.iss
 
-#define AppName "一键投稿"
+#define AppName "PushAnything"
 #define AppVersion "1.0.0"
-#define AppExe "一键投稿.exe"
+#define AppExe "PushAnything.exe"
 #define AppId "{{4D8C1F5B-AD6E-556B-9742-ECA33AB6E391}"
 
 [Setup]

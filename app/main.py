@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""main.py — 一键投稿桌面端入口（pywebview）。"""
+"""main.py — PushAnything 桌面端入口（pywebview）。"""
 import os
 import sys
 
@@ -34,7 +34,7 @@ def main():
     start_api_server()
     api = Api()
     win = webview.create_window(
-        "文章一键投稿",
+        "PushAnything",
         url=INDEX,
         js_api=api,
         width=1360,

@@ -31,7 +31,7 @@ _server = None
 
 def _doc():
     return {
-        "name": "一键投稿 API", "version": VERSION,
+        "name": "PushAnything API", "version": VERSION,
         "endpoints": {
             "GET /api": "接口说明",
             "GET /api/health": "存活检查",
