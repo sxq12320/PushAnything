@@ -11,7 +11,7 @@ let allFolders = [];
 let dirty = false;
 let lastSaveAt = "";
 let searchQ = "";
-let page = "write";
+let page = "home";
 let pubRel = null;   // 发布页选中的文章
 
 const $ = (id) => document.getElementById(id);
@@ -352,6 +352,7 @@ async function refreshAll() {
   renderFolders();
   renderArticles();
   renderPubCard();
+  if (page === "home") renderHome();
 }
 
 function renderFolders() {
@@ -490,9 +491,10 @@ function renderArticles() {
     more.title = "更多";
     more.onclick = (e) => { e.stopPropagation(); articleMenu(a, e); };
     item.appendChild(more);
-    item.onclick = () => {
-      if (page === "publish") selectPub(a.rel);
-      else loadArticle(a.rel);
+    item.onclick = async () => {
+      if (page === "publish") { selectPub(a.rel); return; }
+      await loadArticle(a.rel);
+      if (page === "home") setPage("write");
     };
     item.oncontextmenu = (e) => { e.preventDefault(); articleMenu(a, e); };
     box.appendChild(item);
@@ -609,7 +611,7 @@ function updateCoverThumb() {
 
 let videoPath = "";
 
-const PAGE_TITLE = { write: null, publish: "发布文章", video: "视频投稿" };
+const PAGE_TITLE = { home: "一键投稿", write: null, publish: "发布文章", video: "视频投稿" };
 function setPage(p) {
   page = p;
   document.body.className = document.body.className
@@ -621,7 +623,51 @@ function setPage(p) {
   $("tbTitle").textContent = t || ($("title").value.trim() || "无标题");
   if (p === "video") { renderTasks(); renderVideoHistory(); }
   if (p === "publish") renderHistory();
+  if (p === "home") renderHome();
   renderArticles();
+}
+
+// ---------- 首页 ----------
+const HOME_STYLE_C = {
+  red: "#D64541", blue: "#2B5EA7", green: "#2E8B6A",
+  orange: "#E07B39", black: "#3A3A3C",
+};
+function renderHome() {
+  const h = new Date().getHours();
+  const hi = h < 6 ? "夜深了" : h < 12 ? "早上好" : h < 18 ? "下午好" : "晚上好";
+  $("homeHello").textContent = hi;
+  const box = $("homeGrid");
+  box.innerHTML = "";
+  const list = [...allArticles]
+    .sort((a, b) => (b.mtime || 0) - (a.mtime || 0)).slice(0, 8);
+  if (!list.length) {
+    box.innerHTML = '<div class="home-empty">还没有文章<br>' +
+      '点上面「新建文章」开始写第一篇，或在左侧搜索 / 整理目录</div>';
+    return;
+  }
+  list.forEach((a, i) => {
+    const c = document.createElement("div");
+    c.className = "h-card";
+    c.style.setProperty("--c", HOME_STYLE_C[a.style] || "#0071E3");
+    c.style.animationDelay = `${0.32 + Math.min(i * 0.04, 0.3)}s`;
+    const t = document.createElement("span");
+    t.className = "t"; t.textContent = a.title || a.slug;
+    const sub = document.createElement("span");
+    sub.className = "sub";
+    const bits = [];
+    if (a.mtime) bits.push(fmtDate(a.mtime));
+    if (a.folder) bits.push(a.folder);
+    sub.textContent = bits.join(" · ") || " ";
+    c.appendChild(t); c.appendChild(sub);
+    if (a.feishu) {
+      const cl = document.createElement("span");
+      cl.className = "c-ic"; cl.innerHTML = IC.cloud;
+      cl.title = "已备份到飞书";
+      sub.appendChild(cl);
+    }
+    c.onclick = async () => { await loadArticle(a.rel); setPage("write"); };
+    box.appendChild(c);
+  });
 }
 
 // ---------- 发布页 ----------
@@ -950,7 +996,7 @@ async function testFeishu() {
 
 window.addEventListener("pywebviewready", async () => {
   api = window.pywebview.api;
-  document.body.classList.add("page-write");
+  setPage("home");
   const [cfg, themes] = await Promise.all([
     api.get_config(), api.wechat_themes()]);
   $("author").value = cfg.author || "";
@@ -962,6 +1008,18 @@ window.addEventListener("pywebviewready", async () => {
     ? `<span class="dot">●</span> API 127.0.0.1:${st.port}`
     : (st.enabled ? "API 启动失败" : "API 已关闭");
 });
+
+// 首页快捷操作
+document.querySelectorAll(".h-act").forEach((b) => {
+  b.onclick = () => {
+    const act = b.dataset.act;
+    if (act === "new") { setPage("write"); newArticle(); }
+    else if (act === "publish") setPage("publish");
+    else if (act === "video") setPage("video");
+    else if (act === "settings") openSettings();
+  };
+});
+$("homeAll").onclick = () => setPage("write");
 
 $("btnNew").onclick = newArticle;
 $("btnNewFolder").onclick = newFolderInline;

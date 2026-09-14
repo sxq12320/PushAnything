@@ -36,7 +36,11 @@
   <!-- 左侧：目录 + 文章 -->
   <aside id="sidebar">
     <nav class="side-nav">
-      <div class="nav-item active" data-page="write">
+      <div class="nav-item active" data-page="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        首页
+      </div>
+      <div class="nav-item" data-page="write">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         撰写
       </div>
@@ -91,6 +95,51 @@
   <!-- 右侧主区 -->
   <main id="main">
     <div id="progressBar"></div>
+
+    <!-- 首页（文档浏览器式） -->
+    <div id="homeView">
+      <div class="home-scroll">
+        <div class="home-hero">
+          <div class="home-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg>
+          </div>
+          <div class="home-hello" id="homeHello">你好</div>
+          <div class="home-tag">一处写作 · 处处发布</div>
+        </div>
+
+        <div class="home-acts">
+          <button class="h-act" data-act="new">
+            <span class="h-act-ic a-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
+            <span class="h-act-t">新建文章</span>
+            <span class="h-act-s">开始写下一篇</span>
+          </button>
+          <button class="h-act" data-act="publish">
+            <span class="h-act-ic a-pub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span>
+            <span class="h-act-t">发布文章</span>
+            <span class="h-act-s">投递到平台草稿箱</span>
+          </button>
+          <button class="h-act" data-act="video">
+            <span class="h-act-ic a-vid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
+            <span class="h-act-t">视频投稿</span>
+            <span class="h-act-s">知乎 / 头条视频</span>
+          </button>
+          <button class="h-act" data-act="settings">
+            <span class="h-act-ic a-set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 .33 1.82 1.65 1.65 0 0 0-1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+            <span class="h-act-t">偏好设置</span>
+            <span class="h-act-s">飞书 / 存储 / API</span>
+          </button>
+        </div>
+
+        <div class="home-sec">
+          <div class="home-sec-t">
+            最近文章
+            <button class="log-clear" id="homeAll">全部</button>
+          </div>
+          <div id="homeGrid" class="home-grid"></div>
+        </div>
+      </div>
+    </div><!-- /homeView -->
+
     <div id="writeView">
     <!-- 标题 -->
     <div class="top-row">
