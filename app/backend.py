@@ -165,6 +165,37 @@ class Api:
         fy = FixPoint.SOUTH if "n" in dir else FixPoint.NORTH
         self._window.resize(w, h, fix_point=fx | fy)
 
+    def setup_native(self):
+        """窗口创建后补 Win32 样式：去掉 WS_POPUP、加回可缩放边框样式。
+        frameless 的窗口对系统是"弹出窗"，Aero Snap/贴边吸附不生效；
+        加回 WS_THICKFRAME 后视觉仍无边框（DWM 已把框架延伸进客户区），
+        但系统 Snap、隐形缩放边框、任务栏窗口管理全部恢复。"""
+        w = self._window
+        if not w or not getattr(w, "native", None):
+            return
+        try:
+            import ctypes
+            u = ctypes.windll.user32
+            hwnd = w.native.Handle.ToInt32()
+            GWL_STYLE = -16
+            WS_POPUP = 0x80000000
+            WS_CAPTION = 0x00C00000      # WS_BORDER | WS_DLGFRAME
+            WS_THICKFRAME = 0x00040000
+            WS_MAXIMIZEBOX = 0x00010000
+            WS_MINIMIZEBOX = 0x00020000
+            getl = u.GetWindowLongPtrW if hasattr(u, "GetWindowLongPtrW") \
+                else u.GetWindowLongW
+            setl = u.SetWindowLongPtrW if hasattr(u, "SetWindowLongPtrW") \
+                else u.SetWindowLongW
+            style = getl(hwnd, GWL_STYLE)
+            style &= ~(WS_POPUP | WS_CAPTION)
+            style |= WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX
+            setl(hwnd, GWL_STYLE, style)
+            u.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+                           0x0020 | 0x0002 | 0x0001 | 0x0004)
+        except Exception:
+            pass
+
     def native_drag(self, ratio=0.5):
         """标题栏拖动：转交系统原生移动循环（WM_NCLBUTTONDOWN/HTCAPTION），
         获得 Aero Snap：拖到屏幕顶部=最大化，左/右缘=半屏。

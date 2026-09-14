@@ -44,6 +44,7 @@ def main():
         frameless=True,
     )
     api.bind(win)
+    win.events.shown += lambda *a: api.setup_native()
     webview.start()
 
 
