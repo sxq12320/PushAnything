@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 mdconvert.py — Markdown -> 各平台 HTML/段落流
 
@@ -310,7 +310,7 @@ WECHAT_THEMES = {
         "h2_mode": "block", "h2_color": "#C43B47",
         "strong": "#C43B47", "link": "#576B95",
         "quote_bar": "#C43B47", "quote_color": "#8E2F38",
-        "quote_bg": "#FADCE1",
+        "quote_bg": "#FADCE1", "quote_border": "#F0BCC8",
         "code_bg": "#F5F5F5", "hr": "#EEF2F7",
     },
     "blue": {
@@ -318,7 +318,7 @@ WECHAT_THEMES = {
         "h2_mode": "block", "h2_color": "#2B5797",
         "strong": "#2B5797", "link": "#2B5797",
         "quote_bar": "#2B5797", "quote_color": "#2B5797",
-        "quote_bg": "#DCE8F5",
+        "quote_bg": "#DCE8F5", "quote_border": "#B8CCE6",
         "code_bg": "#F0F4FA", "hr": "#E8EDF5",
     },
     "green": {
@@ -326,7 +326,7 @@ WECHAT_THEMES = {
         "h2_mode": "bar", "h2_color": "#3F7E5B",
         "strong": "#3F7E5B", "link": "#3F7E5B",
         "quote_bar": "#3F7E5B", "quote_color": "#2F6147",
-        "quote_bg": "#DFF0E6",
+        "quote_bg": "#DFF0E6", "quote_border": "#B8D9C6",
         "code_bg": "#F2F7F4", "hr": "#E9F0EB",
     },
     "orange": {
@@ -334,7 +334,7 @@ WECHAT_THEMES = {
         "h2_mode": "underline", "h2_color": "#C96A2B",
         "strong": "#C96A2B", "link": "#576B95",
         "quote_bar": "#C96A2B", "quote_color": "#9A5220",
-        "quote_bg": "#F9E7D5",
+        "quote_bg": "#F9E7D5", "quote_border": "#EBC9A6",
         "code_bg": "#FBF4EE", "hr": "#F4EDE6",
     },
     "ink": {
@@ -342,7 +342,7 @@ WECHAT_THEMES = {
         "h2_mode": "bar", "h2_color": "#222222",
         "strong": "#111111", "link": "#576B95",
         "quote_bar": "#222222", "quote_color": "#3A3A3C",
-        "quote_bg": "#ECECEF",
+        "quote_bg": "#ECECEF", "quote_border": "#D5D5DB",
         "code_bg": "#F5F5F5", "hr": "#ECECEC",
     },
 }
@@ -432,7 +432,8 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
             m.group(1))
         inner = inner.replace("margin:8px 0 0", "margin:0", 1)  # 首段不加顶距
         return (f'<section style="margin:16px 0;padding:16px 20px;'
-                f'background:{th["quote_bg"]};border-radius:14px;">'
+                f'background:{th["quote_bg"]};border-radius:14px;'
+                f'border:1px solid {th["quote_border"]};">'
                 f'{inner}</section>')
 
     html = re.sub(r'<blockquote>(.*?)</blockquote>', _quote_repl,
