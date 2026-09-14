@@ -29,6 +29,7 @@ test_*.py
 *.png
 !app/web/**/*.png
 !installer/icon.png
+!docs/**/*.png
 !app/web/**/*.woff*
 *.tmp
 

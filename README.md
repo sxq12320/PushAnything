@@ -1,137 +1,129 @@
-# PushAnything
+<div align="center">
+  <img src="installer/icon.png" width="96" alt="PushAnything">
+  <h1>PushAnything</h1>
+  <p><b>一处写作 · 处处发布</b></p>
+  <p>Markdown 写一次，一键投递到 <b>公众号 / 知乎 / 头条</b> 草稿箱；也支持<b>视频投稿</b>与<b>飞书备份</b>。<br>
+  只进草稿箱，正式发布永远由你自己点。</p>
+  <p>
+    <img src="https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square" alt="platform">
+    <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square" alt="python">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license">
+  </p>
+</div>
 
-Markdown 写文章，一键上传到 **公众号 / 知乎 / 头条** 三个平台的草稿箱（只进草稿，不发布）。
-也支持**视频投稿**（知乎 / 头条）。
+---
+
+## 功能一览
+
+| | |
+|---|---|
+| 📝 **Typora 式编辑器** | IR 即时渲染、快捷键、选中文字智能包裹、URL 粘贴成链、剪贴板图片自动落盘、大纲导航、15s 自动保存 |
+| ∑ **数学公式** | KaTeX 即时渲染；发布时转高清 PNG 走图片管道（本地 mathtext，断网可用） |
+| 🎨 **公众号排版主题** | 经典红 / 藏青蓝 / 松绿 / 暖橙 / 墨黑，随文章保存，上传时生效 |
+| 🗂 **目录管理** | 文件夹、搜索、右键菜单、移动归档 |
+| 📤 **多平台投递** | 公众号走官方草稿 API；知乎/头条走 Edge 自动化（登录态持久化） |
+| 🎬 **视频投稿** | 知乎 / 头条视频草稿，独立页面与任务队列 |
+| ☁️ **飞书备份** | 保存即同步为飞书云文档，自动清理旧版本 |
+| 📜 **投稿记录** | B 站稿件管理式历史列表，逐平台结果徽标，`history.json` 重启不丢 |
+| 🔌 **本地 API** | `http://127.0.0.1:8737/api`，其他软件/脚本可直接投递任务 |
+| 💾 **自定义数据目录** | 所有本地数据可整体迁移到任意位置 |
+
+## 截图
+
+<p align="center">
+  <img src="docs/screenshot-home.png" width="31%" alt="首页">
+  <img src="docs/screenshot-write.png" width="31%" alt="撰写">
+  <img src="docs/screenshot-publish.png" width="31%" alt="发布">
+</p>
 
 ## 安装
 
-- **安装版**（推荐）：运行 `PushAnything_Setup_x.x.x.exe`，装到 `%LOCALAPPDATA%\Programs\PushAnything`，
-  自带开始菜单/桌面快捷方式和卸载程序，无需管理员权限
-- **绿色版**：直接运行 `PushAnything.exe`，数据保存在 exe 同级目录（可在 设置→数据存储 里改到任意位置）
+去 [Releases](../../releases) 下载最新版：
 
-两种方式的写作数据都可通过「数据存储」设置迁移到自定义目录。
+- **安装版**（推荐）：`PushAnything_Setup_x.x.x.exe` —— 装到 `%LOCALAPPDATA%\Programs\PushAnything`，
+  开始菜单/桌面快捷方式 + 卸载程序，无需管理员权限
+- **绿色版**：`PushAnything.exe` —— 放任意目录双击即用，数据存 exe 同级目录
 
-## 使用
+## 快速开始
 
-安装版从开始菜单/桌面启动；绿色版双击 `PushAnything.exe`。
+1. **登录一次**：侧栏底部「知乎登录」「头条登录」→ 弹出的 Edge 窗口里扫码/密码登录，
+   登录态存在 `profiles\` 目录长期有效。公众号走官方 API，无需登录
+2. **公众号凭证**：设置 →「公众号」→ 选择凭证 JSON（含 `mp_appid` / `mp_appsecret` 字段，
+   在公众号后台 → 设置与开发 → 基本配置中获取；需开启「草稿箱」相关接口权限）
+3. **写作**：撰写页直接写，标题必填；选目录、配主题、贴封面（留空自动生成渐变封面）
+4. **投递**：点「去发布」→ 勾选平台 →「上传到草稿箱」，日志区看实时进度
 
-### 页面结构
+## 页面
 
-侧栏顶部导航分四个页面：
+侧栏导航分四个页面：
 
-- **首页**：启动页——快捷操作（新建/发布/视频/设置）+ 最近文章卡片墙，点卡片直接进入撰写
-- **撰写**：写文章的纯写作环境（编辑器 + 平台预览 + 保存/飞书备份）
-- **发布**：选一篇文章 → 勾选平台 → 上传到草稿箱（左侧文章列表点哪篇发哪篇）
-- **视频**：视频投稿表单（知乎/头条），侧栏切换为「最近任务」列表
+- **首页**：问候语 + 快捷操作 + 最近文章卡片墙（卡片色条跟随排版主题），点卡片直接续写
+- **撰写**：纯写作环境——标题、作者/摘要/封面、编辑器 + 平台实时预览、日志
+- **发布**：选文章 → 平台胶囊 → 上传；下方是投稿记录面板，点条目展开完整日志
+- **视频**：视频选择卡 + 标题/简介/封面 → 知乎/头条；侧栏切换为「最近任务」
 
-### 首次使用
+## 编辑器细节（Typora 手感）
 
-1. 点底部「登录/检查 知乎」「登录/检查 头条」→ 弹出 Edge 窗口，扫码或密码登录一次
-   （登录态保存在 `profiles\` 目录，之后永久有效）
-2. 公众号无需登录，走官方草稿 API（凭证读 `C:\Users\33836\media\wx_config.json`）
-
-### 写文章
-
-- 左侧管理已保存的文章；标题必填，作者默认「人间旁听生」，摘要可空
-- **目录管理**：侧栏「目录」+ 号建文件夹；右键文件夹可重命名/删除（文章自动挪回未分类）；
-  文章行悬停 ⋯ 或右键 → 移动到文件夹 / 删除 / 打开飞书文档
-- **排版主题**：预览栏右上角可切换公众号样式（经典红/藏青蓝/松绿/暖橙/墨黑），
-  随文章保存，上传时生效；设置里可改默认主题
-- 正文用 Markdown：`**加粗**`、`*斜体*`、`## 小节`、列表、`> 引用`、表格、代码块
-- **数学公式**：行内 `$E=mc^2$`、独立成段 `$$ \int_0^1 x^2\,dx = \frac{1}{3} $$`
-  - 编辑器内 KaTeX 即时渲染（本地资产，离线可用）
-  - 公众号/知乎/头条：公式转高清 PNG 走图片管道（本地 mathtext 渲染，断网可用；
-    复杂语法如 `\begin{aligned}` 自动走 codecogs 在线渲染兜底）
-  - 飞书备份：保留 LaTeX 源码，飞书文档中可手动转为公式块
-- 图片：`![说明](D:\pics\a.png)` 本地图 或 `![说明](https://...)` 网络图
-  - 公众号：自动上传为微信素材
-  - 知乎/头条：自动通过编辑器上传按钮插入
-- 表格：三个平台统一渲染成图片插入（编辑器粘贴表格必乱）
-- 封面（公众号必填）：点「选图」手动选，留空则按标题自动生成深蓝渐变封面
-
-### 编辑器（Typora 式手感）
-
-- **即时渲染**：边写边排版，光标行才显示标记符号；打字机模式保持行居中
-- **快捷键**：`Ctrl+B` 加粗 · `Ctrl+I` 斜体 · `Ctrl+K` 链接 · `Ctrl+E` 行内代码 ·
+- 快捷键：`Ctrl+B` 加粗 · `Ctrl+I` 斜体 · `Ctrl+K` 链接 · `Ctrl+E` 行内代码 ·
   `Ctrl+Shift+K` 代码块 · `Ctrl+Shift+M` 行内公式 · `Ctrl+T` 表格 · `Alt+Shift+5` 删除线 · `Ctrl+S` 保存
-- **智能输入**：选中文字后敲 `*` `_` `` ` `` `~` `$` 直接包裹；选中文字后粘贴网址自动生成 `[文字](网址)`
-- **粘贴图片**：剪贴板图片直接 Ctrl+V，自动存到文章 `assets/` 目录并插入相对路径
-- **大纲**：工具栏末尾「☰」按钮弹出标题大纲，点击跳转
-- **自动保存**：已保存过的文章停笔 15 秒自动落盘（不触发飞书备份）
-- 支持 `==高亮==`、脚注 `[^1]`、`[TOC]` 目录标记、自动空格
+- 选中文字敲 `*` `_` `` ` `` `~` `$` 直接包裹；选中文字后粘贴网址自动生成 `[文字](网址)`
+- 剪贴板图片 `Ctrl+V` 自动存到文章 `assets/` 目录并插入相对路径
+- 工具栏末尾 ☰ 弹出标题大纲，点击跳转
+- 支持 `==高亮==`、脚注 `[^1]`、`[TOC]`、中英文自动空格
 
-### 发布文章
+## 数学公式
 
-撰写页点「去发布」，或导航点「发布」→ 左侧列表选文章 → 勾选平台 → 「上传到草稿箱」。
-三个平台依次执行，日志区显示进度。发布页可覆盖主题/封面设置。
+- 行内 `$E=mc^2$`，独立成段 `$$ \int_0^1 x^2\,dx = \frac{1}{3} $$`
+- 编辑器内 KaTeX 即时渲染（**本地资产，离线可用**）
+- 发布时：公式转 220dpi 透明 PNG 走图片管道——本地 **matplotlib mathtext** 渲染（断网可用），
+  复杂语法（`\begin{aligned}` 等）自动降级到 codecogs 在线渲染，再兜底源码文本，永不空白
+- 飞书备份保留 LaTeX 源码，可在飞书文档中手动转为公式块
 
-### 视频投稿
+## 图片与表格
 
-导航点「视频」：点虚线框选视频文件 → 填标题/简介 →（可选封面图）→ 勾选知乎/头条 → 上传。
-公众号置灰是因为图文草稿接口不支持纯视频（视频号是另一套体系）。
-侧栏「最近任务」显示所有投稿记录，点任务可看完整日志。
-找不到「存草稿」按钮的平台会填好内容后**保留浏览器窗口**由你手动发布。
-知乎/头条会弹出 Edge 窗口自动填稿（知乎自动存草稿，头条点「存草稿」），
-窗口中出现验证码时手动过一下即可。正式发布在各平台后台手动操作。
+- 图片：`![说明](D:\pics\a.png)` 本地图 或 `![说明](https://...)` 网络图
+  - 公众号：自动上传为微信素材；知乎/头条：模拟编辑器上传按钮按位置插入
+- 表格：三平台统一渲染成图片插入（富文本编辑器粘贴表格必乱）
 
 ## 飞书备份
 
-把文章同步为飞书云文档。点侧栏「⚙ 设置」→「飞书备份」配置，或点「☁ 备份」手动备份当前文章。
+保存文章时自动同步为飞书云文档（官方 Markdown 导入接口，排版完整保留），或点工具栏 ☁ 手动备份。
+已备份文章带云标记，右键可「在飞书中打开」；重复备份自动替换旧文档。
 
-### 开通步骤（一次性，约 5 分钟）
+**一次性配置（约 5 分钟）**：
 
-1. 打开 [open.feishu.cn](https://open.feishu.cn) → 「开发者后台」→ 创建**企业自建应用**，拿到 `App ID` 和 `App Secret`
-2. 应用管理 → 「权限管理」→ 搜索并开通云文档相关权限（建议全选）：
-   `docx:document`、`drive:drive`、`drive:file`、`docs:doc`、**导入云文档**（drive:import）
-3. 「版本管理与发布」→ 创建版本并发布（个人/自建租户一般自动通过）
-4. 飞书客户端 → 云文档 → 新建一个文件夹（如「文章备份」）→
-   右上角「···」→ 添加文档应用/协作者 → 搜索你的应用名加为**可编辑**协作者
-5. 打开该文件夹，浏览器地址栏 `folder/xxxxxxxx` 最后一段就是**文件夹 Token**
-6. 三项填进设置页 → 「测试连接」→ 勾选「保存文章时自动备份」→ 保存设置
+1. [open.feishu.cn](https://open.feishu.cn) → 开发者后台 → 创建**企业自建应用**，拿到 `App ID` / `App Secret`
+2. 权限管理 → 开通 `docx:document`、`drive:drive`、`drive:file`、`docs:doc`、导入云文档
+3. 版本管理与发布 → 创建版本并发布
+4. 飞书客户端建文件夹 → 把应用加为**可编辑**协作者 → 文件夹 URL 最后一段是 Token
+5. 三项填进设置页 →「测试连接」→ 勾选「保存文章时自动备份」
 
-### 备份行为
+## 本地 API
 
-- **保存文章时自动备份**（开启后）；「☁ 备份」按钮随时手动备份
-- 每次备份用飞书官方 Markdown 导入生成新版云文档，并自动**删除该文旧版本**（不堆积重复文档）
-- 已备份的文章在列表中带 ☁ 标记
-- API 投递的图文任务也会自动备份（无需传额外参数）
-- 也可单独调 `POST /api/feishu`：`{"title":..,"md":..,"wait":true}`
-
-## 本地 API（给其他软件/脚本调用）
-
-软件运行时自动启动本地接口：`http://127.0.0.1:8737/api`（仅本机，端口可在 `config.json` 改 `api_port`，`api_enabled:false` 关闭，`api_token` 设置后请求需带 `X-Token` 头）。
-侧栏底部会显示 API 运行状态。也可无窗口纯服务运行：`PushAnything.exe --serve`
-
-### 接口
+软件运行时自动启动 `http://127.0.0.1:8737/api`（仅本机）。
+设置里可改端口/关闭/设 `api_token`（设置后请求需带 `X-Token` 头）。
+也可无窗口纯服务运行：`PushAnything.exe --serve`
 
 ```
-GET  /api              接口说明
+GET  /api              接口说明          GET  /api/tasks/{id}  任务详情
 GET  /api/health       存活检查
 GET  /api/tasks        最近任务列表
-GET  /api/tasks/{id}   任务详情（status / logs / results）
 
 POST /api/article      图文投稿
-  { "title": "标题",                      // 必填
-    "md": "# markdown正文",               // 必填
-    "author": "作者", "digest": "摘要",    // 可选
-    "cover_path": "D:\\封面.png",          // 可选，缺省自动生成
+  { "title": "标题", "md": "# 正文",                 // 必填
+    "author": "", "digest": "", "cover_path": "",     // 可选
+    "style": "blue",                                  // 可选，公众号主题
     "platforms": ["wechat","zhihu","toutiao"],
-    "wait": true }                        // 可选，同步等结果
+    "wait": true }                                    // 同步等结果
 
-POST /api/video        视频投稿（框架已就绪，处理器逐步适配）
-  { "title": "标题", "video_path": "D:\\a.mp4",   // 必填
-    "desc": "简介", "cover_path": "封面",          // 可选
+POST /api/video        视频投稿
+  { "title": "", "video_path": "D:\\a.mp4",           // 必填
+    "desc": "", "cover_path": "",                     // 可选
     "platforms": ["toutiao","zhihu"], "wait": true }
 
 POST /api/feishu       飞书云文档备份
-  { "title": "标题", "md": "markdown正文",         // 必填
-    "slug": "文章slug",                            // 可选，回写本地meta并替换旧备份
-    "wait": true }
+  { "title": "", "md": "", "slug": "", "wait": true }
 ```
-
-返回：`{"ok":true,"task_id":"xxx"}` 异步任务；`wait:true` 时返回完整结果。
-
-### 调用示例
 
 ```bash
 curl -X POST http://127.0.0.1:8737/api/article ^
@@ -139,34 +131,23 @@ curl -X POST http://127.0.0.1:8737/api/article ^
   -d "{\"title\":\"测试\",\"md\":\"## 你好\",\"platforms\":[\"wechat\"],\"wait\":true}"
 ```
 
-```python
-import requests
-r = requests.post("http://127.0.0.1:8737/api/article", json={
-    "title": "文章标题", "md": md_text,
-    "platforms": ["wechat", "zhihu", "toutiao"], "wait": True,
-}, timeout=600)
-print(r.json()["task"]["results"])
-```
+## 窗口操作
 
-### 视频投稿说明
+无边框窗口：标题栏可拖动、双击最大化；**拖任意边缘/角落自由缩放**（最小 560×420）；
+**右键标题栏**弹出贴边菜单——左半屏 / 右半屏 / 上半屏 / 最大化。
 
-- 视频任务走同一队列，按平台分发到 `zhihu_video.py` / `toutiao_video.py` 处理器
-- 视频类平台草稿机制不统一：能点「存草稿」就存，找不到入口则**填好内容后保留浏览器窗口**，由你手动点发布（不替你发布）
-- 公众号图文接口不支持纯视频稿；视频号另算
-- 新平台/新内容类型：在 `runner.py` 注册 handler 即可接入
-
-## 目录说明（exe 旁边）
+## 数据目录
 
 | 目录/文件 | 内容 |
 |---|---|
-| `drafts\` | 本地保存的文章（.md + .json 元信息 + assets\ 粘贴图） |
-| `profiles\zhihu` `profiles\toutiao` | 浏览器登录态，删除即退出登录 |
-| `assets\` | 生成的封面、上传完成截图 |
+| `drafts\` | 文章（`.md` + `.json` 元信息 + `assets\` 粘贴图），支持子文件夹 |
+| `profiles\` | 知乎/头条浏览器登录态，删除即退出 |
+| `assets\` | 生成的封面、截图 |
 | `history.json` | 投稿记录（上限 200 条） |
-| `config.json` | 作者名、凭证路径、数据目录等配置（固定在 exe 旁） |
-| `crash.log` | 崩溃日志（出错时排查用） |
+| `config.json` | 配置（固定在 exe 旁，内含数据目录指针） |
+| `crash.log` | 崩溃日志 |
 
-> **自定义数据位置**：设置 →「数据存储」→ 更改，可把 `drafts\ profiles\ assets\ history.json` 整体迁到任意目录（如 D:\我的数据），迁移自动完成，重启生效。`config.json` 始终留在 exe 旁。
+> 设置 →「数据存储」可把上面所有数据整体迁到任意目录（自动迁移，重启生效）。
 
 ## 开发
 
@@ -175,25 +156,45 @@ print(r.json()["task"]["results"])
 python -m venv venv
 venv\Scripts\python.exe -m pip install -r requirements.txt
 
-:: 打包绿色 exe
+:: 绿色 exe
 build.bat
 
-:: 打包绿色 exe + 安装程序（需 Inno Setup 6）
+:: 绿色 exe + 安装包（需 Inno Setup 6）
 build_installer.bat
+
+:: 重新生成应用图标
+venv\Scripts\python.exe make_icon.py
 ```
 
-发布流程：推一个 `v*` 标签，GitHub Actions 自动构建 exe + 安装包并创建 Release。
+推 `v*` 标签触发 GitHub Actions：自动构建 exe + 安装包并创建 Release。
 
-## License
+### 结构
 
-MIT © PushAnything contributors
+```
+app/
+  main.py          入口（pywebview 窗口）
+  backend.py       前后端桥（JS API）
+  api_server.py    本地 HTTP API
+  jobs.py          统一任务队列（UI 与 API 共用）
+  runner.py        任务分发：article / video / feishu → 各平台 handler
+  mdconvert.py     Markdown → 各平台 HTML（含公式/表格/主题渲染）
+  wechat_push.py   公众号官方草稿 API
+  zhihu_push.py    知乎浏览器自动化     zhihu_video.py   知乎视频
+  toutiao_push.py  头条浏览器自动化     toutiao_video.py 头条视频
+  feishu_sync.py   飞书云文档备份
+  web/             前端（Vditor IR + KaTeX，全部本地化离线可用）
+```
 
-源码在 `app\`：`main.py` 入口、`backend.py` 前后端桥、`mdconvert.py` Markdown转换、
-`wechat_push.py` 公众号API、`zhihu_push.py`/`toutiao_push.py` 浏览器自动化、`browser.py` 自动化工具、
-`feishu_sync.py` 飞书云文档备份、`jobs.py` 任务队列、`api_server.py` 本地HTTP接口。
+新增内容类型/平台：在 `runner.py` `register(kind, fn)` 一行接入，队列/日志/历史/API 自动继承。
 
 ## 已知说明
 
-- 知乎/头条没有官方草稿接口，靠浏览器自动化实现；平台改版可能导致选择器失效，需更新 `zhihu_push.py` / `toutiao_push.py` 顶部的选择器列表
-- 上传时弹出的 Edge 窗口不要手动关闭，等它自己关
-- exe 约 60MB（内置 Python + Playwright 驱动），首次启动需解压几秒
+- 知乎/头条无官方草稿接口，靠浏览器自动化；平台改版可能导致选择器失效，
+  需更新 `*_push.py` / `*_video.py` 顶部的选择器列表
+- 上传时弹出的 Edge 窗口不要手动关闭；出现验证码手动过一下即可
+- 找不到「存草稿」入口的平台会填好内容后保留窗口，由你手动点发布
+- exe 约 90MB（内置 Python + Playwright + matplotlib），首次启动需解压几秒
+
+## License
+
+[MIT](LICENSE) © PushAnything contributors

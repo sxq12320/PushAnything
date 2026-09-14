@@ -953,6 +953,7 @@ async function openSettings() {
   $("cfgApiPort").value = cfg.api_port || 8737;
   $("cfgApiToken").value = cfg.api_token || "";
   $("cfgDataDir").value = cfg.data_dir || "";
+  $("cfgWxConfig").value = cfg.wechat_config || "";
   $("feishuTestRes").textContent = "";
   $("settingsMsg").textContent = "";
   $("settingsMask").classList.remove("hidden");
@@ -972,6 +973,7 @@ async function saveSettings() {
     api_enabled: $("cfgApiOn").checked,
     api_port: parseInt($("cfgApiPort").value, 10) || 8737,
     api_token: $("cfgApiToken").value.trim(),
+    wechat_config: $("cfgWxConfig").value.trim(),
   });
   $("author").value = r.author || "";
   $("settingsMsg").textContent = "已保存";
@@ -1040,6 +1042,11 @@ $("btnBackup").onclick = backupToFeishu;
 $("btnCloseSettings").onclick = closeSettings;
 $("btnSaveSettings").onclick = saveSettings;
 $("btnTestFeishu").onclick = testFeishu;
+$("btnPickWx").onclick = async () => {
+  if (!api) return;
+  const p = await api.pick_json();
+  if (p) $("cfgWxConfig").value = p;
+};
 $("btnPickDir").onclick = async () => {
   if (!api) return;
   const p = await api.pick_dir();

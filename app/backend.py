@@ -389,6 +389,12 @@ class Api:
             else path.replace("\\", "/")
         return {"ok": True, "src": src}
 
+    def pick_json(self):
+        r = self._window.create_file_dialog(
+            webview.OPEN_DIALOG,
+            file_types=("JSON 文件 (*.json)", "所有文件 (*.*)"))
+        return r[0] if r else ""
+
     def pick_dir(self):
         r = self._window.create_file_dialog(webview.FOLDER_DIALOG)
         return r[0] if r else ""
