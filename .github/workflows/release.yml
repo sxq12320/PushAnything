@@ -36,7 +36,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: yijiantougao
+          name: pushanything
           path: |
             dist/*.exe
             installer/*.exe

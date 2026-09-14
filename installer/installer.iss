@@ -23,6 +23,7 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#AppExe}
+SetupIconFile=..\assets\icon.ico
 DisableProgramGroupPage=yes
 CloseApplications=yes
 RestartApplications=no
