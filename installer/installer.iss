@@ -3,7 +3,7 @@
 ;   "C:\Users\33836\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer\installer.iss
 
 #define AppName "PushAnything"
-#define AppVersion "1.0.0"
+#define AppVersion "1.2.0"
 #define AppExe "PushAnything.exe"
 #define AppId "{{4D8C1F5B-AD6E-556B-9742-ECA33AB6E391}"
 

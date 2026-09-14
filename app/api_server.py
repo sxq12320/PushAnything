@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import jobs
 
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 _server = None
 
 
