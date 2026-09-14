@@ -34,7 +34,7 @@ exe = EXE(
     a.datas,
     [],
     name='PushAnything',
-    icon='assets/icon.ico',
+    icon='installer/icon.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

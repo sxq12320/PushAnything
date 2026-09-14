@@ -28,6 +28,7 @@ installer/*.exe
 test_*.py
 *.png
 !app/web/**/*.png
+!installer/icon.png
 !app/web/**/*.woff*
 *.tmp
 

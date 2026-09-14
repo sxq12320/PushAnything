@@ -54,8 +54,8 @@ stroke([(12, 19), (19, 12), (22, 15), (15, 22), (12, 19)], closed=True, w=int(W 
 cx, cy = P(11, 11); r = S * 0.032
 d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(255, 255, 255, 255), width=int(W * 0.8))
 
-os.makedirs("assets", exist_ok=True)
-img.save("assets/icon.png")
+os.makedirs("installer", exist_ok=True)
+img.save("installer/icon.png")
 img.resize((256, 256), Image.LANCZOS).save(
-    "assets/icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    "installer/icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 print("icon ok")
