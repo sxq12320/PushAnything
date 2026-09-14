@@ -419,13 +419,18 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
 
     # 4) 段落 / 引用 / 列表 / 代码样式
     html = re.sub(r'<p>', f'<p style="margin:16px 0;{_BASE}">', html)
-    html = re.sub(
-        r'<blockquote>\s*<p[^>]*>(.*?)</p>\s*</blockquote>',
-        (r'<p style="margin:16px 0;padding-left:12px;'
-         f'border-left:3px solid {th["quote_bar"]};'
-         f'{_BASE}color:{th["quote_color"]};"><em>\1</em></p>'),
-        html, flags=re.S)
-    html = re.sub(r'<blockquote>|</blockquote>', '', html)
+
+    def _quote_repl(m):
+        def p_rep(pm):
+            return ('<p style="margin:8px 0;padding-left:12px;'
+                    f'border-left:3px solid {th["quote_bar"]};'
+                    f'{_BASE}color:{th["quote_color"]};">'
+                    f'<em>{pm.group(1)}</em></p>')
+        return re.sub(r'<p[^>]*>(.*?)</p>', p_rep, m.group(1), flags=re.S)
+
+    html = re.sub(r'<blockquote>(.*?)</blockquote>', _quote_repl,
+                  html, flags=re.S)
+    html = re.sub(r'</?blockquote>', '', html)
     html = re.sub(r'<li>', '<li style="' + _BASE + '">', html)
     html = _wrap_td_li(html)
     html = re.sub(r'<strong>', f'<strong style="color:{th["strong"]};">', html)
