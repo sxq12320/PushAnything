@@ -602,6 +602,10 @@ body.page-home #homeView { display: flex; animation: viewIn .34s var(--ease-out)
 #vditor { flex: 1; min-height: 0; }
 #vditor .vditor-content { height: 100%; }
 #vditor .vditor-ir { padding: 10px 22px 28px; }
+#vditor .vditor-ir, #vditor .vditor-ir .vditor-reset,
+#vditor .vditor-ir pre, #vditor .vditor-ir code,
+#vditor .vditor-ir input, #vditor .vditor-ir textarea { cursor: text; }
+#vditor .vditor-ir a { cursor: pointer; }
 #vditor .vditor-ir > .vditor-reset,
 #vditor .vditor-ir pre.vditor-reset {
   max-width: 700px; margin: 0 auto;
