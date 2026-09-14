@@ -309,40 +309,40 @@ WECHAT_THEMES = {
         "name": "经典红",
         "h2_mode": "block", "h2_color": "#C43B47",
         "strong": "#C43B47", "link": "#576B95",
-        "quote_bar": "#C43B47", "quote_color": "#7A6A6D",
-        "quote_bg": "#FAF3F4",
+        "quote_bar": "#C43B47", "quote_color": "#8E2F38",
+        "quote_bg": "#FADCE1",
         "code_bg": "#F5F5F5", "hr": "#EEF2F7",
     },
     "blue": {
         "name": "藏青蓝",
         "h2_mode": "block", "h2_color": "#2B5797",
         "strong": "#2B5797", "link": "#2B5797",
-        "quote_bar": "#2B5797", "quote_color": "#6A7180",
-        "quote_bg": "#F2F6FB",
+        "quote_bar": "#2B5797", "quote_color": "#2B5797",
+        "quote_bg": "#DCE8F5",
         "code_bg": "#F0F4FA", "hr": "#E8EDF5",
     },
     "green": {
         "name": "松绿",
         "h2_mode": "bar", "h2_color": "#3F7E5B",
         "strong": "#3F7E5B", "link": "#3F7E5B",
-        "quote_bar": "#3F7E5B", "quote_color": "#66766D",
-        "quote_bg": "#F1F7F4",
+        "quote_bar": "#3F7E5B", "quote_color": "#2F6147",
+        "quote_bg": "#DFF0E6",
         "code_bg": "#F2F7F4", "hr": "#E9F0EB",
     },
     "orange": {
         "name": "暖橙",
         "h2_mode": "underline", "h2_color": "#C96A2B",
         "strong": "#C96A2B", "link": "#576B95",
-        "quote_bar": "#C96A2B", "quote_color": "#7A6E66",
-        "quote_bg": "#FAF5F0",
+        "quote_bar": "#C96A2B", "quote_color": "#9A5220",
+        "quote_bg": "#F9E7D5",
         "code_bg": "#FBF4EE", "hr": "#F4EDE6",
     },
     "ink": {
         "name": "墨黑",
         "h2_mode": "bar", "h2_color": "#222222",
         "strong": "#111111", "link": "#576B95",
-        "quote_bar": "#222222", "quote_color": "#6E6E73",
-        "quote_bg": "#F6F6F7",
+        "quote_bar": "#222222", "quote_color": "#3A3A3C",
+        "quote_bg": "#ECECEF",
         "code_bg": "#F5F5F5", "hr": "#ECECEC",
     },
 }
@@ -431,9 +431,8 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
             f'<p style="margin:8px 0 0;{_BASE}color:{th["quote_color"]};">',
             m.group(1))
         inner = inner.replace("margin:8px 0 0", "margin:0", 1)  # 首段不加顶距
-        return (f'<section style="margin:16px 0;padding:14px 18px;'
-                f'background:{th["quote_bg"]};border-radius:10px;'
-                f'border-left:3px solid {th["quote_bar"]};">'
+        return (f'<section style="margin:16px 0;padding:16px 20px;'
+                f'background:{th["quote_bg"]};border-radius:14px;">'
                 f'{inner}</section>')
 
     html = re.sub(r'<blockquote>(.*?)</blockquote>', _quote_repl,
