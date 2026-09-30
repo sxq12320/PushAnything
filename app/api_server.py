@@ -21,11 +21,13 @@ wait=true 时同步等待任务完成并返回 results（默认异步返回 task
 """
 import json
 import threading
+import hmac
+from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import jobs
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 _server = None
 
 
@@ -79,18 +81,26 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _auth_ok(self):
+        origin = self.headers.get("Origin")
+        if origin and urlparse(origin).netloc != self.headers.get("Host"):
+            return False
         if not Handler.token:
             return True
-        return self.headers.get("X-Token", "") == Handler.token
+        return hmac.compare_digest(self.headers.get("X-Token", "").encode(), Handler.token.encode())
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
+        if not 0 <= n <= 8 * 1024 * 1024:
+            raise ValueError("请求不能超过 8 MB")
         if not n:
             return {}
         try:
-            return json.loads(self.rfile.read(n).decode("utf-8"))
-        except Exception:
-            return {}
+            value = json.loads(self.rfile.read(n).decode("utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("请求正文必须是 JSON 对象")
+            return value
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("请求正文不是有效的 JSON") from exc
 
     def log_message(self, *a):  # 静音默认访问日志
         pass
@@ -112,36 +122,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, "tasks": jobs.queue.recent()})
         if p.startswith("/api/tasks/"):
             jid = p.rsplit("/", 1)[-1]
-            j = jobs.queue.get(jid)
+            j = jobs.queue.detail(jid)
             if not j:
                 return self._send(404, {"ok": False, "err": "task not found"})
-            return self._send(200, {"ok": True, "task": j.to_dict()})
+            return self._send(200, {"ok": True, "task": j})
         return self._send(404, {"ok": False, "err": "not found"})
 
     def do_POST(self):
         if not self._auth_ok():
             return self._send(401, {"ok": False, "err": "unauthorized"})
         p = self.path.split("?")[0].rstrip("/")
-        data = self._body()
+        try:
+            data = self._body()
+        except (TypeError, ValueError) as exc:
+            return self._send(400, {"ok": False, "err": str(exc)})
         if p == "/api/article":
             return self._submit("article", data,
-                                required=["title"],
+                                required=["title", "md"],
                                 allow=["wechat", "zhihu", "toutiao"])
         if p == "/api/video":
             return self._submit("video", data,
                                 required=["title", "video_path"],
                                 allow=["toutiao", "zhihu"])
         if p == "/api/feishu":
-            if not (data.get("title") or "").strip():
+            if not isinstance(data.get("title"), str) or not data["title"].strip():
                 return self._send(400, {"ok": False, "err": "缺少字段: title"})
             data["_source"] = "api"
             job = jobs.queue.submit("feishu", data)
             if data.get("wait"):
-                import time
-                t0 = time.time()
-                while job.status in ("queued", "running") and time.time() - t0 < 180:
-                    time.sleep(0.5)
-                return self._send(200, {"ok": job.status == "done",
+                done = job.completed.wait(180)
+                return self._send(200 if done else 202, {"ok": job.status == "done",
                                         "task": job.to_dict()})
             return self._send(200, {"ok": True, "task_id": job.id,
                                     "status": job.status})
@@ -149,27 +159,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def _submit(self, kind, data, required, allow):
         for k in required:
-            if not (data.get(k) or "").__str__().strip():
+            if not isinstance(data.get(k), str) or not data[k].strip():
                 return self._send(400, {"ok": False, "err": f"缺少字段: {k}"})
         plats = data.get("platforms")
         if isinstance(plats, list):
-            bad = [x for x in plats if x not in allow]
+            bad = [x for x in plats if not isinstance(x, str) or x not in allow]
             if bad:
                 return self._send(400, {"ok": False,
                                         "err": f"不支持的平台: {bad}，可选 {allow}"})
             data["platforms"] = {x: True for x in plats}
-        if not data.get("platforms"):
+        plats = data.get("platforms")
+        if not isinstance(plats, dict) or any(p not in allow for p in plats):
+            return self._send(400, {"ok": False, "err": "platforms 包含不支持的平台或格式错误"})
+        if not any(plats.values()):
             return self._send(400, {"ok": False, "err": "platforms 不能为空"})
 
         data["_source"] = "api"
         job = jobs.queue.submit(kind, data)
 
         if data.get("wait"):
-            import time
-            t0 = time.time()
-            while job.status in ("queued", "running") and time.time() - t0 < 600:
-                time.sleep(0.5)
-            return self._send(200, {"ok": job.status == "done",
+            done = job.completed.wait(600)
+            return self._send(200 if done else 202, {"ok": job.status == "done",
                                     "task": job.to_dict()})
         return self._send(200, {"ok": True, "task_id": job.id,
                                 "status": job.status})
@@ -193,6 +203,7 @@ def _list_articles():
     import paths
     out = []
     for root, _dirs, files in os.walk(paths.DRAFTS_DIR):
+        _dirs[:] = [directory for directory in _dirs if not directory.startswith(".") and directory != "assets"]
         for fn in files:
             if not fn.endswith(".md"):
                 continue
@@ -209,11 +220,12 @@ def _list_articles():
             except Exception:
                 pass
             try:
-                md_txt = open(md, encoding="utf-8").read()
+                with open(md, encoding="utf-8") as handle:
+                    md_txt = handle.read()
             except Exception:
                 md_txt = ""
             out.append({"rel": rel, "title": meta.get("title") or slug,
-                        "folder": folder, "md": md_txt,
+                        "folder": folder, "md": md_txt, "base_dir": root,
                         "author": meta.get("author", ""),
                         "digest": meta.get("digest", ""),
                         "cover_path": meta.get("cover_path", ""),

@@ -23,7 +23,7 @@ def start_api_server():
     try:
         srv = api_server.start(int(cfg.get("api_port", 8737)),
                                cfg.get("api_token") or "",
-                               lan=bool(cfg.get("api_lan", True)))
+                               lan=bool(cfg.get("api_lan", False)))
         print(f"[api] 本地接口已启动: http://127.0.0.1:{cfg.get('api_port', 8737)}/api")
         return srv
     except Exception as e:
@@ -40,13 +40,14 @@ def main():
         js_api=api,
         width=1360,
         height=880,
-        min_size=(1100, 700),
+        min_size=(720, 520),
         frameless=True,
         easy_drag=False,   # 关掉 JS 模拟拖动——它在任意位置拖都会移动窗口，
     )                      # 且抢占文本选择；标题栏拖动走 native_drag 原生循环
     api.bind(win)
     win.events.shown += lambda *a: api.setup_native()
-    webview.start()
+    win.events.closing += api.request_close
+    webview.start(private_mode=False, storage_path=os.path.join(paths.PROFILES_DIR, "desktop"))
 
 
 def serve():

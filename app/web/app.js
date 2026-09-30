@@ -12,6 +12,14 @@ let dirty = false;
 let lastSaveAt = "";
 let searchQ = "";
 let page = "home";
+let documentEpoch = 0;
+let changeRevision = 0;
+let suppressInput = false;
+let sourceMode = false;
+let saveInFlight = null;
+let saveError = "";
+let previewRevision = 0;
+let previewInFlight = false;
 let pubRel = null;   // 发布页选中的文章
 
 const $ = (id) => document.getElementById(id);
@@ -34,7 +42,8 @@ vditor = new Vditor($("vditor"), {
   mode: "ir",
   toolbar: [],
   cache: { enable: false },
-  typewriterMode: true,
+  typewriterMode: false,
+  lang: "zh_CN",
   cdn: "vendor",
   icon: "",
   math: { engine: "KaTeX", inlineDigit: true },
@@ -47,26 +56,11 @@ vditor = new Vditor($("vditor"), {
   upload: {
     accept: "image/*",
     multiple: false,
-    handler: async (files) => {
-      const f = files && files[0];
-      if (!f || !f.type || !f.type.startsWith("image/") || !api) return null;
-      const dataUrl = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = rej;
-        r.readAsDataURL(f);
-      });
-      const r = await api.save_pasted_image(curRel || "", dataUrl);
-      if (r && r.ok) {
-        return `\n![粘贴图片](${r.src})\n`;
-      }
-      toast("粘贴图片失败: " + ((r && r.msg) || "未知错误"));
-      return null;
-    },
+    handler: async (files) => { await importImageFiles(files); return null; },
   },
   placeholder: "用 Markdown 开始写作…",
   height: "100%",
-  input: () => { markDirty(true); updatePreview(); scheduleAutoSave(); },
+  input: () => { if (!suppressInput) markDirty(true); updatePreview(); },
   after: () => {
     vdReady = true;
     if (pendingMd !== null) { vditor.setValue(pendingMd); pendingMd = null; }
@@ -74,23 +68,33 @@ vditor = new Vditor($("vditor"), {
   },
 });
 
-function getMd() { return vdReady ? vditor.getValue() : (pendingMd || ""); }
+function getMd() { return sourceMode ? $("sourceEditor").value : (vdReady ? vditor.getValue() : (pendingMd || "")); }
 function setMd(md) {
-  if (vdReady) vditor.setValue(md || "");
-  else pendingMd = md || "";
+  suppressInput = true;
+  try {
+    $("sourceEditor").value = md || "";
+    if (vdReady) vditor.setValue(md || "");
+    else pendingMd = md || "";
+  } finally { suppressInput = false; }
 }
 
 // ---- 编辑器工具栏 ----
-function _sel() { try { return window.getSelection().toString(); } catch (e) { return ""; } }
-function _ins(t) { if (vdReady) vditor.insertValue(t); }
+function _sel() { try { if (sourceMode) return $("sourceEditor").value.substring($("sourceEditor").selectionStart, $("sourceEditor").selectionEnd); return window.getSelection().toString(); } catch (e) { return ""; } }
+function _ins(t) {
+  if (sourceMode) {
+    const editor = $("sourceEditor");
+    editor.focus();
+    if (document.execCommand('insertText', false, t)) return;
+    editor.setRangeText(t, editor.selectionStart, editor.selectionEnd, "end");
+    editor.focus(); markDirty(true); updatePreview();
+  } else if (vdReady) vditor.insertValue(t);
+}
 function _wrap(b, a, ph) { _ins(b + (_sel() || ph) + a); }
 function _line(pre, ph) { _ins("\n" + pre + (_sel() || ph) + "\n"); }
 async function _insImage() {
-  if (api) {
-    const p = await api.pick_image();
-    if (p) { _ins("\n![图片](" + p.replace(/\\/g, "/") + ")\n"); return; }
-  }
-  _wrap("![", "](D:\\图片.png)", "说明");
+  if (!api) return;
+  const path = await api.pick_image();
+  if (path) await importPickedImage(path);
 }
 
 const TB_ITEMS = [
@@ -186,23 +190,9 @@ $("vditor").addEventListener("paste", (e) => {
 // ---- 自动保存（停笔 15s 静默落盘，不触发飞书） ----
 let autoSaveTimer = null;
 function scheduleAutoSave() {
-  if (!curRel || !dirty) return;
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(async () => {
-    if (!dirty || !curRel || !api) return;
-    const title = $("title").value.trim();
-    if (!title) return;
-    const r = await api.save_article(
-      curRel, title, $("author").value.trim(), $("digest").value.trim(),
-      $("coverPath").value, getMd(), $("styleSel").value, "", true);
-    if (r && r.rel) {
-      const d = new Date();
-      lastSaveAt = String(d.getHours()).padStart(2, "0") + ":" +
-                   String(d.getMinutes()).padStart(2, "0");
-      markDirty(false);
-      refreshAll();
-    }
-  }, 15000);
+  if (!dirty || !api || composing) return;
+  autoSaveTimer = setTimeout(() => saveArticle(true, true), 1200);
 }
 
 // ---- 大纲 ----
@@ -244,17 +234,31 @@ function scrollToHeading(text) {
 }
 
 // ---- 状态栏 ----
-function markDirty(v) { dirty = v; renderStatus(); }
+function markDirty(value) {
+  if (value && suppressInput) return;
+  dirty = value;
+  if (value) {
+    changeRevision++;
+    saveError = "";
+    scheduleAutoSave();
+    scheduleRecovery();
+  }
+  renderStatus();
+}
+
 function renderStatus() {
-  const t = getMd();
-  const n = t.replace(/[\s`*#\->|!\[\]()$\\]/g, "").length;
-  let left = n ? `${n} 字` : "就绪";
-  if (curRel) left += "  ·  " + curRel;
-  if (dirty) left += "  ·  未保存";
-  else if (lastSaveAt) left += "  ·  已保存 " + lastSaveAt;
-  $("stLeft").textContent = left;
-  $("stDirty").className = "st-dot" + (dirty ? " on" : "");
-  $("stDirty").title = dirty ? "有未保存更改" : "内容已保存";
+  const words = getMd().replace(/[\s`*#\->|!\[\]()$\\]/g, '').length;
+  let label = words ? words + ' 字' : '就绪';
+  if (curRel) label += ' · ' + curRel;
+  if (saveError) label += ' · 保存失败，内容已保留';
+  else if (saveInFlight) label += ' · 正在保存…';
+  else if (dirty) label += ' · 等待保存';
+  else if (lastSaveAt) label += ' · 已保存 ' + lastSaveAt;
+  $('stLeft').textContent = label;
+  $('stDirty').className = 'st-dot' + (dirty ? ' on' : '');
+  $('stDirty').title = saveError || (dirty ? '有未保存更改' : '内容已保存');
+  $('saveState').textContent = saveError ? '保存失败' : saveInFlight ? '保存中…' : dirty ? '等待保存' : curRel ? '已保存' : '自动保存已开启';
+  $('saveState').classList.toggle('error', !!saveError);
 }
 
 function log(msg, cls) {
@@ -264,15 +268,20 @@ function log(msg, cls) {
   else if (/失败|错误|超时/.test(msg)) div.className = "err";
   else if (/成功|已保存|完成/.test(msg)) div.className = "ok";
   div.textContent = msg;
-  $("log").appendChild(div);
-  $("log").scrollTop = $("log").scrollHeight;
+  const box = $("log");
+  const pinned = box.scrollHeight - box.scrollTop - box.clientHeight < 56;
+  box.appendChild(div);
+  while (box.children.length > 200) box.firstChild.remove();
+  if (pinned) box.scrollTop = box.scrollHeight;
 }
 
+let toastTimer = null;
 function toast(msg, ms = 2600) {
   const t = $("toast");
   t.textContent = msg;
   t.classList.remove("hidden");
-  setTimeout(() => t.classList.add("hidden"), ms);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), ms);
 }
 
 function fmtDate(ts) {
@@ -319,26 +328,19 @@ document.addEventListener("click", (e) => {
 });
 
 // 后端事件回调
-window.onBackendEvent = (ev) => {
-  if (ev.kind === "log") log(ev.data);
-  else if (ev.kind === "toast") toast(ev.data, 4000);
-  else if (ev.kind === "refresh") refreshAll();
-  else if (ev.kind === "status") { renderTasks(); renderHistory(); renderVideoHistory(); }
-  else if (ev.kind === "done") {
-    $("btnUpload").disabled = false;
-    $("btnUpload").classList.remove("is-loading");
-    $("btnVideoUp").disabled = false;
-    $("btnVideoUp").classList.remove("is-loading");
-    $("progressBar").classList.remove("on");
-    renderTasks();
-    renderHistory();
-    renderVideoHistory();
-    const r = ev.data || {};
-    const lines = Object.entries(r).map(([k, v]) =>
-      `${k}: ${v.ok ? "成功" : "失败 " + (v.err || "")}`);
-    log("===== 上传结束 =====");
-    lines.forEach((l) => log(l, /成功/.test(l) ? "ok" : "err"));
-    toast("上传结束：" + (lines.join("；") || "无平台被选中"), 5000);
+window.onBackendEvent = (event) => {
+  if (event.kind === "log") log(event.data);
+  else if (event.kind === "toast") toast(event.data, 4000);
+  else if (event.kind === "refresh") refreshAll();
+  else if (event.kind === "close") prepareToClose();
+  else if (event.kind === "status" || event.kind === "done") {
+    refreshTaskViews();
+    if (event.kind === "done") {
+      const task = event.data || {};
+      const status = {done: "全部完成", partial: "部分失败，可重试", error: "失败，可重试", attention: "需要手动检查", cancelled: "已取消"}[task.status] || "已结束";
+      toast(`${task.title || "任务"} · ${status}`, 4500);
+      if (task.kind === "feishu") refreshAll();
+    }
   }
 };
 
@@ -346,9 +348,10 @@ window.onBackendEvent = (ev) => {
 
 async function refreshAll() {
   if (!api) return;
-  [allFolders, allArticles] = await Promise.all([
+  const [folders, articles] = await Promise.all([
     api.list_folders(), api.list_articles(),
   ]);
+  allFolders = folders; allArticles = articles;
   renderFolders();
   renderArticles();
   renderPubCard();
@@ -390,7 +393,11 @@ function renderFolders() {
             danger: true,
             fn: async () => {
               if (!confirm(`删除文件夹「${r.label}」？里面的文章会移到未分类。`)) return;
-              await api.delete_folder(r.label);
+              if (curRel && curRel.startsWith(r.label + '/') && !await flushDraft()) return;
+              const result = await api.delete_folder(r.label);
+              if (!result.ok) { toast(result.msg); return; }
+              if (result.moved[curRel]) { curRel = result.moved[curRel]; await loadArticle(curRel, true); }
+              if (result.moved[pubRel]) pubRel = result.moved[pubRel];
               if (curFolder === r.label) curFolder = null;
               refreshAll();
             } },
@@ -404,16 +411,24 @@ function renderFolders() {
 function renameFolderInline(name) {
   const row = document.createElement("div");
   row.className = "folder-new";
-  row.innerHTML = `<input value="${name}" placeholder="文件夹名">`;
+  row.innerHTML = '<input placeholder="文件夹名">';
+  row.firstChild.value = name;
   $("folderList").appendChild(row);
   const inp = row.querySelector("input");
   inp.focus(); inp.select();
+  let finished = false;
   const done = async (commit) => {
+    if (finished) return;
+    finished = true;
     const v = inp.value.trim();
     row.remove();
     if (commit && v && v !== name) {
-      await api.rename_folder(name, v);
-      if (curFolder === name) curFolder = v;
+      if (curRel && curRel.startsWith(name + '/') && !await flushDraft()) return;
+      const result = await api.rename_folder(name, v);
+      if (!result.ok) { toast(result.msg); return; }
+      if (curFolder === name) curFolder = result.folder;
+      if (curRel && curRel.startsWith(name + '/')) { curRel = result.folder + curRel.slice(name.length); await loadArticle(curRel, true); }
+      if (pubRel && pubRel.startsWith(name + '/')) pubRel = result.folder + pubRel.slice(name.length);
       refreshAll();
     }
   };
@@ -521,66 +536,126 @@ function articleMenu(a, e) {
   items.push({ label: "删除文章", icon: IC.trash, danger: true,
     fn: async () => {
       if (!confirm(`删除「${a.title || a.slug}」？`)) return;
-      await api.delete_article(a.rel);
-      if (curRel === a.rel) newArticle();
-      refreshAll();
+      if (curRel === a.rel && !await flushDraft()) return;
+      const result = await api.delete_article(a.rel);
+      if (!result.ok) { toast(result.msg); return; }
+      if (pubRel === a.rel) pubRel = null;
+      if (curRel === a.rel) { dirty = false; await newArticle(); }
+      await refreshAll();
+      showDeleteUndo(result.token);
     } });
   showMenu(e.clientX, e.clientY, items);
 }
 
-async function moveArticle(a, folder) {
-  const r = await api.move_article(a.rel, folder);
-  if (r.ok && curRel === a.rel) curRel = r.rel;
-  refreshAll();
+async function moveArticle(article, folder) {
+  if (curRel === article.rel && !await flushDraft()) return;
+  const result = await api.move_article(article.rel, folder);
+  if (!result.ok) { toast(result.msg || "移动失败"); return; }
+  if (pubRel === article.rel) pubRel = result.rel;
+  if (curRel === article.rel) {
+    curRel = result.rel;
+    await loadArticle(result.rel, true);
+  }
+  await refreshAll();
 }
 
-async function loadArticle(rel) {
-  const a = await api.load_article(rel);
-  if (!a) return;
-  curRel = a.rel;
-  $("title").value = a.title || "";
-  syncTbTitle();
-  $("author").value = a.author || "";
-  $("digest").value = a.digest || "";
-  $("coverPath").value = a.cover_path || "";
-  if (a.style) $("styleSel").value = a.style;
-  updateCoverThumb();
-  setMd(a.md || "");
-  markDirty(false); lastSaveAt = "";
-  updatePreview();
-  renderArticles();
+async function loadArticle(rel, skipSave = false) {
+  if (!api || (curRel === rel && !skipSave)) return;
+  if (!skipSave && !await flushDraft()) return;
+  const epoch = ++documentEpoch;
+  const article = await api.load_article(rel);
+  if (!article || epoch !== documentEpoch) return;
+  if (dirty && !await flushDraft()) return;
+  clearTimeout(autoSaveTimer);
+  curRel = article.rel;
+  $("title").value = article.title || "";
+  $("author").value = article.author || "";
+  $("digest").value = article.digest || "";
+  $("coverPath").value = article.cover_path || "";
+  if (article.style) $("styleSel").value = article.style;
+  setEditorBase(article.base_dir);
+  setMd(article.md || "");
+  dirty = false; saveError = ""; lastSaveAt = "";
+  updateCoverThumb(); syncTbTitle(); updatePreview(); renderArticles();
 }
 
-function newArticle() {
+async function newArticle(template = null) {
+  if (!await flushDraft()) return false;
+  ++documentEpoch;
   curRel = null;
+  clearTimeout(autoSaveTimer);
   $("title").value = "";
-  syncTbTitle();
   $("digest").value = "";
   $("coverPath").value = "";
-  updateCoverThumb();
-  setMd("");
-  markDirty(false); lastSaveAt = "";
-  updatePreview();
-  renderArticles();
+  if (template && template.style) $("styleSel").value = template.style;
+  setEditorBase(defaultDraftDir);
+  setMd(template ? template.md : "");
+  dirty = false; saveError = ""; lastSaveAt = "";
+  setPage("write");
+  updateCoverThumb(); syncTbTitle(); updatePreview(); renderArticles();
+  if (template && template.md) markDirty(true);
   $("title").focus();
+  return true;
 }
 
-async function saveArticle() {
-  const title = $("title").value.trim();
-  if (!title) { toast("先写个标题再保存"); return null; }
-  const folder = (curFolder && curRel === null) ? curFolder : "";
-  const r = await api.save_article(
-    curRel || title, title, $("author").value.trim(),
-    $("digest").value.trim(), $("coverPath").value, getMd(),
-    $("styleSel").value, folder);
-  curRel = r.rel;
-  const d = new Date();
-  lastSaveAt = String(d.getHours()).padStart(2, "0") + ":" +
-               String(d.getMinutes()).padStart(2, "0");
-  markDirty(false);
-  refreshAll();
-  toast(r.feishu_queued ? "已保存，飞书备份中…" : "已保存");
-  return r.rel;
+async function saveArticle(quiet = false, autosave = false) {
+  // DOM click events are arguments too; only an explicit boolean means quiet.
+  quiet = quiet === true;
+  if (!api) return null;
+  if (saveInFlight) {
+    const result = await saveInFlight;
+    if (!result) return null;
+    if (!dirty) return curRel;
+  }
+  const snapshot = draftSnapshot();
+  if (!snapshot.title && !snapshot.md.trim()) return curRel;
+  const epoch = documentEpoch;
+  const button = $("btnSave");
+  button.disabled = true;
+  saveError = "";
+  saveInFlight = (async () => {
+    try {
+      const result = await api.save_article(snapshot.rel || "", snapshot.title || "无标题",
+        snapshot.author, snapshot.digest, snapshot.cover_path, snapshot.md, snapshot.style,
+        snapshot.folder, autosave);
+      if (!result || !result.rel) throw new Error("未收到保存结果");
+      if (epoch === documentEpoch) {
+        curRel = result.rel;
+        lastSaveAt = new Date().toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit"});
+        if (snapshot.revision === changeRevision) {
+          dirty = false;
+          clearTimeout(autoSaveTimer);
+          clearTimeout(recoveryTimer);
+          await api.clear_recovery(snapshot.session, snapshot.revision);
+        }
+        await refreshAll();
+      }
+      if (!quiet) toast(result.feishu_queued ? "已保存，飞书备份已排队" : "已保存");
+      return result.rel;
+    } catch (error) {
+      saveError = error.message || "请检查数据目录";
+      if (!quiet) toast("保存失败：" + saveError, 5000);
+      return null;
+    } finally {
+      button.disabled = false;
+      saveInFlight = null;
+      renderStatus();
+    }
+  })();
+  renderStatus();
+  return saveInFlight;
+}
+
+async function flushDraft() {
+  clearTimeout(autoSaveTimer);
+  if (!dirty && !saveInFlight) return true;
+  const result = await saveArticle(true, true);
+  if (!result && dirty) {
+    toast("保存失败，已保留当前内容：" + saveError, 5000);
+    return false;
+  }
+  if (dirty) return !!await saveArticle(true, true);
+  return true;
 }
 
 // ---------- 预览 ----------
@@ -588,16 +663,25 @@ async function saveArticle() {
 function updatePreview() {
   renderStatus();
   clearTimeout(previewTimer);
+  const revision = ++previewRevision;
+  if (page !== "write" || document.body.classList.contains("preview-hidden")) return;
   previewTimer = setTimeout(async () => {
     if (!api) return;
-    const md = getMd();
-    const plat = $("previewPlat").value;
-    $("preview").style.opacity = "0.35";
-    const r = await api.preview(md, plat, $("styleSel").value);
-    if (r && r.html != null) $("preview").innerHTML = r.html;
-    $("preview").style.opacity = "1";
-    renderOutline();
-  }, 350);
+    if (previewInFlight) { updatePreview(); return; }
+    previewInFlight = true;
+    $("previewState").textContent = "更新中…";
+    try {
+      const result = await api.preview(getMd(), $("previewPlat").value, $("styleSel").value, curRel || "");
+      if (revision === previewRevision && result && result.html != null) renderPreviewHTML(result.html);
+    } catch (error) {
+      if (revision === previewRevision) $("previewState").textContent = "暂时无法预览";
+    } finally {
+      previewInFlight = false;
+      if (revision === previewRevision) $("previewState").textContent = "实时预览";
+      else updatePreview();
+      renderOutline();
+    }
+  }, 240);
 }
 
 function updateCoverThumb() {
@@ -624,11 +708,14 @@ function setPage(p) {
   if (p === "video") { renderTasks(); renderVideoHistory(); }
   if (p === "publish") renderHistory();
   if (p === "home") renderHome();
+  if (p === "write") updatePreview();
+  document.querySelectorAll(".nav-item").forEach(n => n.setAttribute("aria-current", n.dataset.page === p ? "page" : "false"));
   renderArticles();
 }
 
 // ---------- 首页 ----------
 const HOME_STYLE_C = {
+  wild: "#A8402B",
   red: "#D64541", blue: "#2B5EA7", green: "#2E8B6A",
   orange: "#E07B39", black: "#3A3A3C",
 };
@@ -673,6 +760,7 @@ function renderHome() {
 // ---------- 发布页 ----------
 
 function selectPub(rel) {
+  $("pubCoverPath").value = "";
   pubRel = rel;
   renderPubCard();
   renderArticles();
@@ -693,44 +781,27 @@ function renderPubCard() {
   card.innerHTML =
     '<span class="pub-ic">' + IC.file + '</span>' +
     '<span class="pub-info">' +
-      '<span class="pub-title">' + (a.title || a.slug) + '</span>' +
-      '<span class="pub-sub">' + bits.join("  ·  ") + '</span>' +
+      '<span class="pub-title">' + escapeHTML(a.title || a.slug) + '</span>' +
+      '<span class="pub-sub">' + escapeHTML(bits.join("  ·  ")) + '</span>' +
     '</span>';
-  if (a.style) $("pubStyle").value = a.style;
+  if (a.style && pubStyleRel !== a.rel) $("pubStyle").value = a.style;
+  pubStyleRel = a.rel;
 }
 
 async function doPublishUpload() {
+  if (!api || $("btnUpload").disabled) return;
   if (!pubRel) { toast("先在左侧选择一篇文章"); return; }
-  const a = await api.load_article(pubRel);
-  if (!a) { toast("文章加载失败"); return; }
-  const platforms = {
-    wechat: $("platWechat").checked,
-    zhihu: $("platZhihu").checked,
-    toutiao: $("platToutiao").checked,
-  };
-  if (!platforms.wechat && !platforms.zhihu && !platforms.toutiao) {
-    toast("至少勾选一个平台"); return;
-  }
-  $("log").innerHTML = "";
-  $("btnUpload").disabled = true;
-  $("btnUpload").classList.add("is-loading");
-  $("progressBar").classList.add("on");
-  log("开始上传…");
-  const r = await api.upload({
-    title: a.title || "", author: a.author || "",
-    digest: a.digest || "",
-    cover_path: $("pubCoverPath").value || a.cover_path || "",
-    style: $("pubStyle").value || a.style || "",
-    md: a.md || "", platforms,
-    base_dir: a.base_dir || undefined,
+  const platforms = {wechat: $("platWechat").checked, zhihu: $("platZhihu").checked, toutiao: $("platToutiao").checked};
+  if (!Object.values(platforms).some(Boolean)) { toast("至少勾选一个平台"); return; }
+  await submitUpload("btnUpload", async () => {
+    if (pubRel === curRel && !await flushDraft()) throw new Error("请先保存当前文章");
+    const article = await api.load_article(pubRel);
+    if (!article) throw new Error("文章加载失败");
+    return api.upload({title: article.title, author: article.author, digest: article.digest,
+      cover_path: $("pubCoverPath").value || article.cover_path || "",
+      style: $("pubStyle").value || article.style || "", md: article.md,
+      platforms, base_dir: article.base_dir});
   });
-  if (!r.ok) {
-    $("btnUpload").disabled = false;
-    $("btnUpload").classList.remove("is-loading");
-    $("progressBar").classList.remove("on");
-    toast(r.msg || "上传启动失败");
-    log("上传启动失败: " + (r.msg || ""), "err");
-  }
 }
 
 // 投稿记录（发布页）
@@ -776,7 +847,7 @@ function buildHistItem(j, i) {
     const c = document.createElement("span");
     c.className = "h-plat";
     const r = (j.results || {})[p];
-    if (r) c.classList.add(r.ok ? "ok" : "fail");
+    if (r) c.classList.add(r.needs_attention ? "attention" : r.ok ? "ok" : "fail");
     else if (j.status === "running") c.classList.add("run");
     c.textContent = PLAT_NAME[p] || p;
     if (r && !r.ok && r.err) c.title = r.err;
@@ -787,8 +858,9 @@ function buildHistItem(j, i) {
 
   const tm = document.createElement("span");
   tm.className = "h-time";
-  tm.textContent = fmtDate(j.created);
+  tm.textContent = (TASK_STATUS[j.status] || j.status) + " · " + fmtDate(j.created);
   d.appendChild(tm);
+  addTaskActions(d, j);
 
   if (histOpen === j.id) {
     const lg = document.createElement("div");
@@ -806,7 +878,7 @@ function buildHistItem(j, i) {
 
 async function renderHistory() {
   if (!api || page !== "publish") return;
-  const jobs = await api.list_jobs();
+  const jobs = await getTasks();
   const box = $("histList");
   const list = (jobs || []).filter(j => j.kind !== "feishu");
   box.innerHTML = "";
@@ -819,7 +891,7 @@ async function renderHistory() {
 
 async function renderVideoHistory() {
   if (!api || page !== "video") return;
-  const jobs = await api.list_jobs();
+  const jobs = await getTasks();
   const box = $("histListV");
   const list = (jobs || []).filter(j => j.kind === "video");
   box.innerHTML = "";
@@ -843,38 +915,20 @@ async function pickVideo() {
 }
 
 async function doVideoUpload() {
+  if (!api || $("btnVideoUp").disabled) return;
   if (!videoPath) { toast("请先选择视频文件"); return; }
   const title = $("vTitle").value.trim();
-  if (!title) { toast("标题不能为空"); return; }
-  const platforms = {
-    zhihu: $("vPlatZhihu").checked,
-    toutiao: $("vPlatToutiao").checked,
-  };
-  if (!platforms.zhihu && !platforms.toutiao) { toast("至少勾选一个平台"); return; }
-  $("log").innerHTML = "";
-  $("btnVideoUp").disabled = true;
-  $("btnVideoUp").classList.add("is-loading");
-  $("progressBar").classList.add("on");
-  log("开始上传视频…");
-  const r = await api.upload_video({
-    title, video_path: videoPath,
-    desc: $("vDesc").value.trim(),
-    cover_path: $("vCoverPath").value,
-    platforms,
-  });
-  if (!r.ok) {
-    $("btnVideoUp").disabled = false;
-    $("btnVideoUp").classList.remove("is-loading");
-    $("progressBar").classList.remove("on");
-    toast(r.msg || "上传启动失败");
-    log("上传启动失败: " + (r.msg || ""), "err");
-  }
+  if (!title) { toast("请填写视频标题"); return; }
+  const platforms = {zhihu: $("vPlatZhihu").checked, toutiao: $("vPlatToutiao").checked};
+  if (!Object.values(platforms).some(Boolean)) { toast("至少勾选一个平台"); return; }
+  await submitUpload("btnVideoUp", () => api.upload_video({title, video_path: videoPath,
+    desc: $("vDesc").value.trim(), cover_path: $("vCoverPath").value, platforms}));
 }
 
 const KIND_NAME = { article: "图文", video: "视频", feishu: "飞书备份" };
 async function renderTasks() {
   if (!api || page !== "video") return;
-  const jobs = await api.list_jobs();
+  const jobs = await getTasks();
   const box = $("taskList");
   box.innerHTML = "";
   const list = (jobs || []).filter(j => j.kind !== "feishu");
@@ -895,7 +949,7 @@ async function renderTasks() {
     t.textContent = j.title || KIND_NAME[j.kind] || j.kind;
     const sub = document.createElement("span");
     sub.className = "sub";
-    const stTxt = { queued: "排队中", running: "执行中", done: "完成", error: "失败" }[j.status] || j.status;
+    const stTxt = TASK_STATUS[j.status] || j.status;
     sub.textContent = `${KIND_NAME[j.kind] || j.kind} · ${stTxt} · ${fmtDate(j.created)}`;
     col.appendChild(t); col.appendChild(sub);
     d.appendChild(dot); d.appendChild(col);
@@ -952,12 +1006,13 @@ async function openSettings() {
   $("cfgApiOn").checked = !!cfg.api_enabled;
   $("cfgApiPort").value = cfg.api_port || 8737;
   $("cfgApiToken").value = cfg.api_token || "";
-  $("cfgApiLan").checked = cfg.api_lan !== false;
+  $("cfgApiLan").checked = !!cfg.api_lan;
   $("cfgDataDir").value = cfg.data_dir || "";
   $("cfgWxConfig").value = cfg.wechat_config || "";
   $("feishuTestRes").textContent = "";
   $("settingsMsg").textContent = "";
   $("settingsMask").classList.remove("hidden");
+  focusDialog($("settingsSheet"));
   loadMobileInfo();
 }
 
@@ -973,9 +1028,11 @@ async function loadMobileInfo() {
   else $("mobileUrlText").textContent = "手机与电脑连同一 WiFi，扫码或输入网址即可投稿。";
 }
 
-function closeSettings() { $("settingsMask").classList.add("hidden"); }
+function closeSettings() { $("settingsMask").classList.add("hidden"); restoreDialogFocus(); }
 
 async function saveSettings() {
+  const port = Number($("cfgApiPort").value);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) { toast("端口应为 1024–65535 的整数"); return; }
   const r = await api.save_config({
     feishu_enabled: $("cfgFeishuOn").checked,
     feishu_app_id: $("cfgFeishuId").value.trim(),
@@ -985,15 +1042,16 @@ async function saveSettings() {
     cover_tag: $("cfgCoverTag").value.trim(),
     wechat_style: $("cfgStyle").value,
     api_enabled: $("cfgApiOn").checked,
-    api_port: parseInt($("cfgApiPort").value, 10) || 8737,
+    api_port: port,
     api_token: $("cfgApiToken").value.trim(),
     api_lan: $("cfgApiLan").checked,
     wechat_config: $("cfgWxConfig").value.trim(),
   });
-  $("author").value = r.author || "";
+  if (r.ok === false) { toast(r.msg); return; }
+  if (!curRel && !getMd().trim()) $("author").value = r.author || "";
   $("settingsMsg").textContent = "已保存";
   toast("设置已保存");
-  setTimeout(closeSettings, 500);
+  closeSettings();
 }
 
 async function testFeishu() {
@@ -1017,8 +1075,13 @@ window.addEventListener("pywebviewready", async () => {
   const [cfg, themes] = await Promise.all([
     api.get_config(), api.wechat_themes()]);
   $("author").value = cfg.author || "";
+  defaultDraftDir = (cfg.active_data_dir || cfg.data_dir) + "/drafts";
+  setEditorBase(defaultDraftDir);
+  if (cfg.startup_warning) toast(cfg.startup_warning, 8000);
   await fillThemeSels(themes, cfg.wechat_style || "red");
-  refreshAll();
+  await refreshAll();
+  await recoverDraft();
+  startEventPolling();
   updatePreview();
   const st = await api.api_status();
   $("stApi").innerHTML = st.running
@@ -1038,20 +1101,20 @@ document.querySelectorAll(".h-act").forEach((b) => {
 });
 $("homeAll").onclick = () => setPage("write");
 
-$("btnNew").onclick = newArticle;
+$("btnNew").onclick = () => newArticle();
 $("btnNewFolder").onclick = newFolderInline;
 $("btnSave").onclick = saveArticle;
 $("btnUpload").onclick = doPublishUpload;
 $("btnCover").onclick = async () => {
   if (!api) return;
   const p = await api.pick_image();
-  if (p) { $("coverPath").value = p; updateCoverThumb(); }
+  if (p) { const r = await api.import_image(curRel || "", p); if (r.ok) { $("coverPath").value = r.path; updateCoverThumb(); markDirty(true); } else toast(r.msg); }
 };
-$("btnCoverClear").onclick = () => { $("coverPath").value = ""; updateCoverThumb(); };
+$("btnCoverClear").onclick = () => { $("coverPath").value = ""; updateCoverThumb(); markDirty(true); };
 $("previewPlat").addEventListener("change", updatePreview);
 $("styleSel").addEventListener("change", updatePreview);
-$("btnLoginZhihu").onclick = () => api && api.check_login("zhihu");
-$("btnLoginToutiao").onclick = () => api && api.check_login("toutiao");
+$("btnLoginZhihu").onclick = () => checkPlatformLogin("zhihu");
+$("btnLoginToutiao").onclick = () => checkPlatformLogin("toutiao");
 $("btnSettings").onclick = openSettings;
 $("btnBackup").onclick = backupToFeishu;
 $("btnCloseSettings").onclick = closeSettings;
@@ -1143,7 +1206,7 @@ async function toggleMax() {
 }
 $("winMin").onclick = () => api && api.win_minimize();
 $("winMax").onclick = toggleMax;
-$("winClose").onclick = () => api && api.win_close();
+$("winClose").onclick = () => prepareToClose();
 document.querySelector(".tb-drag").addEventListener("dblclick", toggleMax);
 
 // 标题栏拖动 → 系统原生移动循环（WM_NCLBUTTONDOWN/HTCAPTION）：

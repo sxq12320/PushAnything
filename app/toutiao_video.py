@@ -73,7 +73,7 @@ def push(job, title, video_path, cover_path="", desc="", log=print):
             return {"ok": True}
         log(f"未找到存草稿入口，窗口保留请手动发布 截图:{shot}")
         keep_open = True  # 留给用户手动点发布
-        return {"ok": True, "note": "已填好内容，窗口保留待手动发布"}
+        return {"ok": True, "needs_attention": True, "note": "已填好内容，窗口保留待手动处理"}
     finally:
         if not keep_open:
             browser.stop(pw, ctx)

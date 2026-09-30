@@ -12,6 +12,9 @@ drafts/
 profiles/
 assets/
 history.json
+templates.json
+.draft-recovery.json
+.trash/
 config.json
 crash.log
 app/config.json
@@ -26,6 +29,7 @@ installer/*.exe
 
 # 测试临时文件
 test_*.py
+!tests/test_*.py
 *.png
 !app/web/**/*.png
 !installer/icon.png

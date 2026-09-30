@@ -15,6 +15,7 @@ import wechat_push
 import zhihu_push
 import toutiao_push
 import feishu_sync
+import storage
 
 FONT_R = "C:/Windows/Fonts/msyh.ttc"
 FONT_B = "C:/Windows/Fonts/msyhbd.ttc"
@@ -55,16 +56,13 @@ def run_article(job):
     # 封面：指定 > 自动生成
     cover_path = (p.get("cover_path") or "").strip()
     if plats.get("wechat"):
-        if not cover_path or not os.path.exists(cover_path):
-            job.log("[封面] 未选图，按标题自动生成…")
-            cover_path = cover_mod.gen_cover(
-                title, subtitle=digest[:30],
-                tag=cfg["cover_tag"], source=cfg["cover_source"])
-            job.log(f"[封面] 已生成: {cover_path}")
-
-    if plats.get("wechat"):
         job.log("===== 公众号 =====")
         try:
+            if not cover_path or not os.path.exists(cover_path):
+                job.log("[封面] 未选图，按标题自动生成…")
+                cover_path = cover_mod.gen_cover(title, subtitle=digest[:30],
+                    tag=cfg["cover_tag"], source=cfg["cover_source"])
+                job.log(f"[封面] 已生成: {cover_path}")
             html = mdconvert.style_for_wechat(
                 md, base_dir, FONT_R, FONT_B,
                 theme=p.get("style") or cfg.get("wechat_style") or
@@ -92,8 +90,8 @@ def run_article(job):
                 results["zhihu"] = {"ok": False, "err": "段落流解析失败"}
             else:
                 try:
-                    zhihu_push.push_draft(title, segs, log=job.log)
-                    results["zhihu"] = {"ok": True}
+                    result = zhihu_push.push_draft(title, segs, log=job.log)
+                    results["zhihu"] = result if isinstance(result, dict) else {"ok": True}
                 except Exception as e:
                     job.log(f"知乎失败: {e}")
                     results["zhihu"] = {"ok": False, "err": str(e)}
@@ -104,8 +102,8 @@ def run_article(job):
                 results["toutiao"] = {"ok": False, "err": "段落流解析失败"}
             else:
                 try:
-                    toutiao_push.push_draft(title, segs, log=job.log)
-                    results["toutiao"] = {"ok": True}
+                    result = toutiao_push.push_draft(title, segs, log=job.log)
+                    results["toutiao"] = result if isinstance(result, dict) else {"ok": True}
                 except Exception as e:
                     job.log(f"头条失败: {e}")
                     results["toutiao"] = {"ok": False, "err": str(e)}
@@ -138,7 +136,10 @@ def run_feishu(job):
     slug = (p.get("slug") or "").strip()
 
     old_token = None
-    meta_p = os.path.join(paths.DRAFTS_DIR, slug + ".json") if slug else ""
+    meta_p = ""
+    if slug:
+        from backend import _paths
+        _, meta_p = _paths(slug)
     if meta_p and os.path.exists(meta_p):
         try:
             old_token = json.load(open(meta_p, encoding="utf-8")
@@ -151,17 +152,18 @@ def run_feishu(job):
     if old_token and old_token != r["token"]:
         if feishu_sync.delete_doc(cfg, old_token):
             job.log("已清理旧版本备份")
-    if meta_p:
-        meta = {}
-        if os.path.exists(meta_p):
-            try:
-                meta = json.load(open(meta_p, encoding="utf-8"))
-            except Exception:
-                pass
-        meta.update({"feishu_token": r["token"], "feishu_url": r["url"],
-                     "feishu_time": time.time()})
-        with open(meta_p, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
+    if meta_p and os.path.isfile(meta_p):
+        with storage.lock:
+            meta = {}
+            if os.path.exists(meta_p):
+                try:
+                    with open(meta_p, encoding="utf-8") as handle:
+                        meta = json.load(handle)
+                except (OSError, ValueError):
+                    pass
+            meta.update({"feishu_token": r["token"], "feishu_url": r["url"],
+                         "feishu_time": time.time()})
+            storage.atomic_json(meta_p, meta)
     return {"feishu": {"ok": True, "url": r["url"]}}
 
 

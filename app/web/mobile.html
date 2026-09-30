@@ -95,6 +95,8 @@ input:focus, textarea:focus { background: #fff; box-shadow: 0 0 0 3px rgba(0,113
 .j-dot.done { background: #34C759; } .j-dot.error { background: #FF3B30; }
 .j-dot.running { background: #0071E3; animation: pl 1s infinite alternate; }
 .j-dot.queued { background: #C7C7CC; }
+.j-dot.partial, .j-dot.attention { background: #C57A18; }
+.j-dot.cancelled { background: #8E8E93; }
 @keyframes pl { to { opacity: .3; } }
 .j-title { flex: 1; font-size: 14px; font-weight: 550; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -104,6 +106,7 @@ input:focus, textarea:focus { background: #fff; box-shadow: 0 0 0 3px rgba(0,113
 .j-p.ok { background: rgba(52,199,89,.14); color: #1D9B45; }
 .j-p.fail { background: rgba(255,59,48,.13); color: #D70015; }
 .j-p.run { background: var(--accent-soft); color: #0057B8; }
+.j-p.attention { background: rgba(197,122,24,.13); color: #93580D; }
 .j-logs { margin-top: 8px; font-size: 11px; color: var(--muted); white-space: pre-wrap;
   max-height: 140px; overflow-y: auto; background: rgba(0,0,0,.03); border-radius: 8px; padding: 8px; }
 
@@ -285,7 +288,7 @@ $("goPick").onclick = async () => {
     const a = selArticle;
     const r = await call("/api/article", {method: "POST", body: JSON.stringify({
       title: a.title, md: a.md, author: a.author, digest: a.digest,
-      cover_path: a.cover_path, style: a.style, platforms: plats,
+      cover_path: a.cover_path, style: a.style, platforms: plats, base_dir: a.base_dir,
     })});
     if (r.ok) { toast("已投递到电脑队列"); switchTab("tasks"); }
     else toast(r.err || r.msg || "投递失败");
@@ -296,7 +299,7 @@ $("goPick").onclick = async () => {
 // 任务
 const PLAT = {wechat: "公众号", zhihu: "知乎", toutiao: "头条", feishu: "飞书"};
 const KIND = {article: "图文", video: "视频", feishu: "飞书"};
-const STXT = {queued: "排队", running: "执行中", done: "完成", error: "失败"};
+const STXT = {queued: "排队", running: "执行中", done: "完成", partial: "部分成功", attention: "需要确认", error: "失败", cancelled: "已取消"};
 function fmtT(ts) {
   const d = new Date(ts * 1000);
   return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
@@ -313,7 +316,7 @@ async function loadTasks() {
       d.className = "j-item";
       const plats = (j.platforms || []).map(p => {
         const res = (j.results || {})[p];
-        const cls = res ? (res.ok ? "ok" : "fail") : (j.status === "running" ? "run" : "");
+        const cls = res ? (res.needs_attention ? "attention" : res.ok ? "ok" : "fail") : (j.status === "running" ? "run" : "");
         return `<span class="j-p ${cls}">${PLAT[p] || p}</span>`;
       }).join("");
       d.innerHTML =

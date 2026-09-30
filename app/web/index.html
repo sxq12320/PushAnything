@@ -2,9 +2,11 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PushAnything</title>
 <link rel="stylesheet" href="vendor/vditor.css">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="studio.css">
 </head>
 <body>
 <!-- 自定义标题栏（无边框窗口） -->
@@ -36,22 +38,22 @@
   <!-- 左侧：目录 + 文章 -->
   <aside id="sidebar">
     <nav class="side-nav">
-      <div class="nav-item active" data-page="home">
+      <button type="button" class="nav-item active" data-page="home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         首页
-      </div>
-      <div class="nav-item" data-page="write">
+      </button>
+      <button type="button" class="nav-item" data-page="write">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         撰写
-      </div>
-      <div class="nav-item" data-page="publish">
+      </button>
+      <button type="button" class="nav-item" data-page="publish">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         发布
-      </div>
-      <div class="nav-item" data-page="video">
+      </button>
+      <button type="button" class="nav-item" data-page="video">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
         视频
-      </div>
+      </button>
     </nav>
     <div class="side-head side-article">
       <div class="search-box">
@@ -145,6 +147,10 @@
     <div class="top-row">
       <input id="title" class="title-inp" placeholder="无标题">
       <div class="top-actions">
+        <span id="saveState" class="save-state" role="status">自动保存已开启</span>
+        <button id="btnTemplates" class="btn" title="选择写作模板">模板</button>
+        <button id="btnFocus" class="btn" aria-pressed="false" title="专注写作 · Ctrl+Shift+F">专注</button>
+        <button id="btnPreview" class="btn" aria-pressed="true" title="显示或隐藏预览">预览</button>
         <button id="btnBackup" class="icon-btn big" title="备份到飞书">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
         </button>
@@ -176,15 +182,20 @@
     <div id="editorWrap">
       <div class="pane">
         <div class="pane-head">
-          <span class="pane-label">Markdown</span>
+          <div class="segmented" aria-label="编辑模式">
+            <button id="btnIR" class="active" aria-pressed="true">写作</button>
+            <button id="btnSource" aria-pressed="false">Markdown</button>
+          </div>
           <div class="ed-toolbar" id="edToolbar"></div>
         </div>
         <div id="vditor"></div>
+        <textarea id="sourceEditor" class="hidden" aria-label="Markdown 源码" spellcheck="false" placeholder="用 Markdown 开始写作…"></textarea>
+        <div id="imageDropHint" class="hidden">松开，将图片插入正文</div>
         <div id="outline" class="hidden"></div>
       </div>
       <div class="pane">
         <div class="pane-head">
-          <span class="pane-label">预览</span>
+          <span class="pane-label" id="previewState">实时预览</span>
           <span class="pane-ctl">
             <select id="previewPlat" class="sel">
               <option value="wechat">公众号</option>
@@ -193,14 +204,15 @@
             <select id="styleSel" class="sel" title="公众号排版主题"></select>
           </span>
         </div>
-        <div id="preview"></div>
+        <iframe id="preview" title="文章预览" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
       </div>
     </div>
 
     <!-- 日志 -->
     <div id="bottomBar">
       <div class="log-head">
-        <span>日志</span>
+        <span>活动</span>
+        <button id="btnToggleLog" class="log-clear" aria-expanded="false">展开</button>
         <button id="btnClearLog" class="log-clear" title="清空日志">清空</button>
       </div>
       <div id="log"></div>
@@ -297,6 +309,8 @@
       <span id="stLeft">就绪</span>
       <span class="st-dot" id="stDirty"></span>
       <span class="st-flex"></span>
+      <span id="imageState" role="status"></span>
+      <span id="stTask"></span>
       <span id="stApi"></span>
     </div>
   </main>
@@ -307,7 +321,7 @@
 
 <!-- 设置面板 -->
 <div id="settingsMask" class="hidden">
-  <div id="settingsSheet" role="dialog" aria-label="设置">
+  <div id="settingsSheet" role="dialog" aria-modal="true" aria-label="设置">
     <div class="sheet-head">
       <span>设置</span>
       <button id="btnCloseSettings" class="icon-btn">
@@ -355,7 +369,7 @@
         <input id="cfgDataDir" class="inp" style="flex:1" readonly placeholder="默认：软件所在目录">
         <button id="btnPickDir" class="btn small">更改</button>
       </div>
-      <div class="hint set-hint">文章、图片、登录态、投稿记录全部保存在此目录。更改后立即迁移现有数据，重启软件生效。</div>
+      <div class="hint set-hint">文章、图片、登录态、投稿记录全部保存在此目录。更改后下次启动时迁移，原目录会保留。</div>
 
       <div class="sec-t">本地接口</div>
       <label class="set-row chk-line">
@@ -366,10 +380,10 @@
         <span class="lbl">端口</span>
         <input id="cfgApiPort" class="inp" style="width:90px">
         <span class="lbl">Token</span>
-        <input id="cfgApiToken" class="inp" style="flex:1" placeholder="留空不鉴权">
+        <input id="cfgApiToken" type="password" class="inp" style="flex:1" placeholder="留空不鉴权">
       </div>
       <label class="set-row chk-line">
-        <input type="checkbox" id="cfgApiLan" checked>
+        <input type="checkbox" id="cfgApiLan">
         <span>允许局域网访问（手机同 WiFi 扫码投稿）</span>
       </label>
 
@@ -396,8 +410,17 @@
 <div class="rz nw"></div><div class="rz ne"></div>
 <div class="rz sw"></div><div class="rz se"></div>
 
-<div id="toast" class="hidden"></div>
+<div id="templateMask" class="hidden">
+  <div id="templateSheet" role="dialog" aria-modal="true" aria-labelledby="templateHeading">
+    <div class="sheet-head"><div><h2 id="templateHeading">从一个好结构开始</h2><p>选好模板，把注意力留给内容。</p></div><button id="btnCloseTemplates" class="icon-btn" aria-label="关闭模板">×</button></div>
+    <div class="template-body"><div id="templateList"></div><div class="template-preview"><div class="template-preview-head"><div id="templateDescription"></div><div class="segmented"><button id="btnTemplateVisual" class="active">排版效果</button><button id="btnTemplateOutline">正文骨架</button></div></div><iframe id="templatePreviewFrame" title="模板排版示例" sandbox referrerpolicy="no-referrer"></iframe><pre id="templatePreview" class="hidden"></pre></div></div>
+    <div class="sheet-foot"><input id="templateName" class="inp" placeholder="我的模板名称" aria-label="模板名称"><button id="btnSaveTemplate" class="btn">保存当前正文为模板</button><button id="btnUseTemplate" class="btn primary">用这个模板写作</button></div>
+  </div>
+</div>
+<div id="imageMask" class="hidden"><div class="image-viewer" role="dialog" aria-modal="true" aria-label="查看图片"><button id="btnCloseImage" class="btn">关闭 · Esc</button><img id="imageView" alt="图片预览"><span id="imageViewCaption"></span></div></div>
+<div id="toast" class="hidden" role="status" aria-live="polite"></div>
 <script src="vendor/vditor.min.js"></script>
 <script src="app.js"></script>
+<script src="studio.js"></script>
 </body>
 </html>

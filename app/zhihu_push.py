@@ -21,8 +21,7 @@ IMG_BTN_SEL = [
     'button:has-text("图片")',
     '[class*="toolbar"] button:has-text("图")',
 ]
-SAVED_SEL = ['text=已保存', 'text=草稿已保存', 'text=保存成功',
-             '[class*="save"]:has-text("保存")']
+SAVED_SEL = ['text=/^(已保存|草稿已保存|保存成功)$/']
 
 
 def push_draft(title, segments, headless=False, log=print):
@@ -38,7 +37,7 @@ def push_draft(title, segments, headless=False, log=print):
             title_loc.fill(title)
             log("标题已填入")
         else:
-            log("未找到标题框（仍继续填正文）")
+            raise RuntimeError("未找到标题框，请检查登录状态或平台页面")
 
         body.click()
         page.keyboard.press("End")
@@ -54,6 +53,7 @@ def push_draft(title, segments, headless=False, log=print):
 
         shot = browser.screenshot(page, "zhihu_done.png")
         log(f"完成截图: {shot}")
-        return True
+        return {"ok": True} if saved else {"ok": True, "needs_attention": True,
+            "note": "正文已填入，未确认自动保存；请到知乎后台检查草稿", "screenshot": shot}
     finally:
         browser.stop(pw, ctx)

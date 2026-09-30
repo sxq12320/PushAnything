@@ -7,6 +7,13 @@ import re
 import json
 import time
 import threading
+import functools
+import html
+import base64
+from collections import deque
+
+import storage
+import image_store
 
 import webview
 
@@ -31,7 +38,7 @@ DEFAULT_CONFIG = {
     "api_enabled": True,
     "api_port": 8737,
     "api_token": "",
-    "api_lan": True,
+    "api_lan": False,
     "wechat_style": "red",
     "feishu_enabled": False,
     "feishu_app_id": "",
@@ -52,13 +59,16 @@ def load_config():
 
 
 def save_config(cfg):
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    with storage.lock:
+        storage.atomic_json(CONFIG_PATH, cfg)
 
 
 def _slug(name):
     s = re.sub(r'[\\/:*?"<>|\s]+', "_", (name or "").strip())[:60]
-    return s or "untitled"
+    s = s.rstrip(". ") or "untitled"
+    if s.split(".")[0].upper() in {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}:
+        s = "_" + s
+    return s
 
 
 def _rel_parts(rel):
@@ -85,11 +95,31 @@ def _folder_dir(folder):
     return os.path.join(DRAFTS_DIR, _slug(folder))
 
 
+def _locked(fn):
+    @functools.wraps(fn)
+    def call(*args, **kwargs):
+        with storage.lock:
+            return fn(*args, **kwargs)
+    return call
+
+
+def _unique_rel(folder, slug):
+    prefix = (_slug(folder) + "/") if folder else ""
+    rel = prefix + slug
+    count = 2
+    while any(os.path.exists(p) for p in _paths(rel)):
+        rel = prefix + f"{slug}_{count}"
+        count += 1
+    return rel
+
+
 class Api:
     def __init__(self):
         self._window = None
         self._busy = False
-        self._ui_job_id = None
+        self._close_allowed = False
+        self._events = deque(maxlen=2000)
+        self._event_lock = threading.Lock()
         jobs.queue.add_listener(self._on_job_event)
 
     def bind(self, window):
@@ -121,7 +151,14 @@ class Api:
 
     def win_close(self):
         if self._window:
+            self._close_allowed = True
             self._window.destroy()
+
+    def request_close(self, *args):
+        if self._close_allowed:
+            return True
+        self._emit("close", None)
+        return False
 
     def win_geom(self):
         """当前窗口几何（物理像素）+ 是否最大化，供前端拖拽缩放。"""
@@ -231,93 +268,120 @@ class Api:
             _do()
 
     def _on_job_event(self, kind, job, msg):
-        """队列事件 -> 前端。API 来源任务带前缀。"""
         if kind == "log":
-            prefix = ("" if job.source == "ui"
-                      else f"[{job.source.upper()}] ")
+            prefix = "" if job.source == "ui" else f"[{job.source.upper()}] "
             self._emit("log", prefix + str(msg))
         elif kind == "done":
-            if job.source == "ui" and job.id == self._ui_job_id:
-                self._ui_job_id = None
-                self._emit("done", job.results)
-            elif job.source != "ui":
-                ok = job.status == "done"
-                self._emit("log",
-                           f"[{job.source.upper()}] 任务 {job.id} "
-                           f"{'完成' if ok else '失败'}")
-                self._emit("refresh", None)
+            self._emit("done", job.to_dict())
+        elif kind == "status":
+            self._emit("status", job.to_dict())
 
     def _emit(self, kind, data):
-        if self._window:
-            try:
-                self._window.evaluate_js(
-                    "window.onBackendEvent(%s)" % json.dumps(
-                        {"kind": kind, "data": data}, ensure_ascii=False))
-            except Exception:
-                pass
+        # The worker never waits for the webview/UI thread to render a log line.
+        with self._event_lock:
+            self._events.append({"kind": kind, "data": data})
+
+    def drain_events(self):
+        with self._event_lock:
+            events = list(self._events)
+            self._events.clear()
+            return events
 
     def _log(self, msg):
         self._emit("log", msg)
 
     # ---------- 目录管理 ----------
 
+    @_locked
     def list_folders(self):
         """草稿目录下的子文件夹 + 文章数。"""
         out = []
         for name in sorted(os.listdir(DRAFTS_DIR)):
             d = os.path.join(DRAFTS_DIR, name)
-            if os.path.isdir(d):
+            if os.path.isdir(d) and not name.startswith(".") and name != "assets":
                 n = sum(1 for f in os.listdir(d) if f.endswith(".md"))
                 out.append({"name": name, "count": n})
         return out
 
+    @_locked
     def create_folder(self, name):
         folder = _slug(name)
         os.makedirs(_folder_dir(folder), exist_ok=True)
         return {"folder": folder}
 
     def rename_folder(self, old, new):
-        old_d = _folder_dir(old)
-        new_d = _folder_dir(new)
-        if os.path.isdir(old_d) and not os.path.exists(new_d):
+        with storage.lock:
+            if not old or not new:
+                return {"ok": False, "msg": "文件夹名称不能为空"}
+            old_d, new_d = _folder_dir(old), _folder_dir(new)
+            if os.path.normcase(old_d) == os.path.normcase(new_d):
+                return {"ok": True, "folder": _slug(new)}
+            if os.path.exists(new_d):
+                return {"ok": False, "msg": "已存在同名文件夹"}
+            if not os.path.isdir(old_d):
+                return {"ok": False, "msg": "文件夹不存在"}
             os.rename(old_d, new_d)
-        return {"folder": _slug(new)}
+            for filename in os.listdir(new_d):
+                document = os.path.join(new_d, filename)
+                if filename.endswith(".md"):
+                    with open(document, encoding="utf-8") as handle:
+                        content = handle.read()
+                    content = content.replace(old_d, new_d).replace(old_d.replace("\\", "/"), new_d.replace("\\", "/"))
+                    storage.atomic_text(document, content)
+                elif filename.endswith(".json"):
+                    with open(document, encoding="utf-8") as handle:
+                        meta = json.load(handle)
+                    cover = meta.get("cover_path") or ""
+                    meta["cover_path"] = cover.replace(old_d, new_d).replace(old_d.replace("\\", "/"), new_d.replace("\\", "/"))
+                    storage.atomic_json(document, meta)
+            return {"ok": True, "folder": _slug(new)}
 
     def delete_folder(self, name):
-        """删除文件夹：里面文章挪回根目录，不丢稿。"""
-        d = _folder_dir(name)
-        if not os.path.isdir(d) or d == DRAFTS_DIR:
-            return False
-        for fn in os.listdir(d):
-            src = os.path.join(d, fn)
-            dst = os.path.join(DRAFTS_DIR, fn)
-            if os.path.exists(dst):
-                base, ext = os.path.splitext(fn)
-                i = 2
-                while os.path.exists(os.path.join(DRAFTS_DIR, f"{base}_{i}{ext}")):
-                    i += 1
-                dst = os.path.join(DRAFTS_DIR, f"{base}_{i}{ext}")
-            os.rename(src, dst)
-        os.rmdir(d)
-        return True
+        with storage.lock:
+            d = _folder_dir(name)
+            if not name or not os.path.isdir(d):
+                return {"ok": False, "msg": "文件夹不存在"}
+            moved = {}
+            for filename in os.listdir(d):
+                if filename.endswith(".md"):
+                    old_rel = _slug(name) + "/" + filename[:-3]
+                    result = self.move_article(old_rel, "")
+                    moved[old_rel] = result["rel"]
+            # Retain orphan images and all unrelated contents instead of deleting them.
+            trash = os.path.join(DRAFTS_DIR, ".trash")
+            os.makedirs(trash, exist_ok=True)
+            os.rename(d, os.path.join(trash, f"folder_{time.time_ns()}_{_slug(name)}"))
+            return {"ok": True, "moved": moved}
 
     def move_article(self, rel, folder):
-        """把文章移进文件夹（folder="" 表示根目录）。"""
-        md_p, meta_p = _paths(rel)
-        if not os.path.exists(md_p):
-            return {"ok": False}
-        _, slug = _rel_parts(rel)
-        d = _folder_dir(folder)
-        os.makedirs(d, exist_ok=True)
-        new_rel = ((_slug(folder) + "/") if folder else "") + slug
-        for p in (md_p, meta_p):
-            if os.path.exists(p):
-                dst = os.path.join(d, os.path.basename(p))
-                os.replace(p, dst)
-        return {"ok": True, "rel": new_rel}
+        with storage.lock:
+            md_p, meta_p = _paths(rel)
+            if not os.path.exists(md_p):
+                return {"ok": False, "msg": "文章不存在"}
+            old_folder, slug = _rel_parts(rel)
+            if old_folder == (folder or ""):
+                return {"ok": True, "rel": rel}
+            new_rel = _unique_rel(folder, slug)
+            new_md, new_meta = _paths(new_rel)
+            os.makedirs(os.path.dirname(new_md), exist_ok=True)
+            with open(md_p, encoding="utf-8") as handle:
+                md = handle.read()
+            md = image_store.relocate_markdown(md, os.path.dirname(md_p), os.path.dirname(new_md))
+            storage.atomic_text(new_md, md)
+            if os.path.exists(meta_p):
+                with open(meta_p, encoding="utf-8") as handle:
+                    meta = json.load(handle)
+                cover_path = meta.get("cover_path") or ""
+                if cover_path and os.path.isfile(cover_path):
+                    cover = image_store.import_file(cover_path, os.path.dirname(new_md))
+                    meta["cover_path"] = cover["path"]
+                storage.atomic_json(new_meta, meta)
+            os.remove(md_p)
+            if os.path.exists(meta_p):
+                os.remove(meta_p)
+            return {"ok": True, "rel": new_rel}
 
-    # ---------- 文章 CRUD ----------
-
+    @_locked
     def list_articles(self):
         """全部文章（含子文件夹），rel 唯一标识。"""
         out = []
@@ -333,7 +397,8 @@ class Api:
                 mp = os.path.join(d, slug + ".json")
                 if os.path.exists(mp):
                     try:
-                        meta = json.load(open(mp, encoding="utf-8"))
+                        with open(mp, encoding="utf-8") as handle:
+                            meta = json.load(handle)
                     except Exception:
                         pass
                 out.append({
@@ -341,6 +406,7 @@ class Api:
                     "rel": (folder + "/" if folder else "") + slug,
                     "folder": folder,
                     "title": meta.get("title", slug),
+                    "author": meta.get("author", ""),
                     "style": meta.get("style", ""),
                     "feishu": bool(meta.get("feishu_token")),
                     "feishu_url": meta.get("feishu_url", ""),
@@ -353,21 +419,24 @@ class Api:
         out.sort(key=lambda x: -x["mtime"])
         return out
 
+    @_locked
     def load_article(self, rel):
         md_p, meta_p = _paths(rel)
         if not os.path.exists(md_p):
             return None
-        md = open(md_p, encoding="utf-8").read()
+        with open(md_p, encoding="utf-8") as handle:
+            md = handle.read()
         meta = {}
         if os.path.exists(meta_p):
             try:
-                meta = json.load(open(meta_p, encoding="utf-8"))
+                with open(meta_p, encoding="utf-8") as handle:
+                    meta = json.load(handle)
             except Exception:
                 pass
         folder, slug = _rel_parts(rel)
         return {"slug": slug, "rel": rel, "folder": folder, "md": md,
                 "base_dir": os.path.join(DRAFTS_DIR, folder) if folder else DRAFTS_DIR,
-                "title": meta.get("title", ""),
+                "title": meta.get("title", slug),
                 "author": meta.get("author", load_config()["author"]),
                 "digest": meta.get("digest", ""),
                 "style": meta.get("style", ""),
@@ -376,56 +445,103 @@ class Api:
 
     def save_article(self, rel, title, author, digest, cover_path, md,
                      style="", folder="", autosave=False):
-        old_folder, old_slug = _rel_parts(rel or title)
-        folder = _slug(folder) if folder else old_folder
-        new_rel = (folder + "/" if folder else "") + old_slug
-        md_p, meta_p = _paths(new_rel)
-        os.makedirs(os.path.dirname(md_p), exist_ok=True)
-
-        with open(md_p, "w", encoding="utf-8") as f:
-            f.write(md or "")
-        meta = {}
-        if os.path.exists(meta_p):
-            try:
-                meta = json.load(open(meta_p, encoding="utf-8"))
-            except Exception:
-                pass
-        meta.update({"title": title, "author": author, "digest": digest,
-                     "cover_path": cover_path, "saved": time.time()})
-        if style:
-            meta["style"] = style
-        with open(meta_p, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-
+        with storage.lock:
+            title = (title or "").strip() or "无标题"
+            if rel:
+                old_folder, slug = _rel_parts(rel)
+                new_rel = (old_folder + "/" if old_folder else "") + slug
+            else:
+                new_rel = _unique_rel(folder, _slug(title))
+            md_p, meta_p = _paths(new_rel)
+            meta = {}
+            if os.path.exists(meta_p):
+                with open(meta_p, encoding="utf-8") as handle:
+                    meta = json.load(handle)
+            meta.update({"title": title, "author": author, "digest": digest,
+                         "cover_path": cover_path, "saved": time.time()})
+            if style:
+                meta["style"] = style
+            storage.atomic_text(md_p, md or "")
+            storage.atomic_json(meta_p, meta)
         cfg = load_config()
         feishu_queued = False
-        if (not autosave and cfg.get("feishu_enabled")
-                and feishu_sync.configured(cfg)):
-            jobs.queue.submit("feishu", {
-                "slug": new_rel, "title": title, "md": md or "",
-                "_source": "feishu"})
+        if not autosave and cfg.get("feishu_enabled") and feishu_sync.configured(cfg):
+            jobs.queue.submit("feishu", {"slug": new_rel, "title": title, "md": md or "", "_source": "feishu"})
             feishu_queued = True
-        return {"slug": old_slug, "rel": new_rel, "feishu_queued": feishu_queued}
+        return {"slug": _rel_parts(new_rel)[1], "rel": new_rel, "feishu_queued": feishu_queued}
 
-    def delete_article(self, rel):
-        md_p, meta_p = _paths(rel)
-        for p in (md_p, meta_p):
-            if os.path.exists(p):
-                os.remove(p)
+    def save_recovery(self, snapshot):
+        with storage.lock:
+            storage.atomic_json(os.path.join(paths.DATA_DIR, ".draft-recovery.json"), snapshot)
         return True
 
-    # ---------- 预览 / 封图 ----------
-
-    def preview(self, md, platform, theme=""):
+    def get_recovery(self):
         try:
+            with open(os.path.join(paths.DATA_DIR, ".draft-recovery.json"), encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, ValueError):
+            return None
+
+    def clear_recovery(self, session, revision):
+        with storage.lock:
+            snapshot = self.get_recovery()
+            if snapshot and snapshot.get("session") == session and snapshot.get("revision") == revision:
+                os.remove(os.path.join(paths.DATA_DIR, ".draft-recovery.json"))
+        return True
+
+    def delete_article(self, rel):
+        with storage.lock:
+            md_p, meta_p = _paths(rel)
+            if not os.path.isfile(md_p):
+                return {"ok": False, "msg": "文章不存在"}
+            token = str(time.time_ns())
+            folder = os.path.join(DRAFTS_DIR, ".trash", token)
+            os.makedirs(folder, exist_ok=True)
+            storage.atomic_json(os.path.join(folder, "restore.json"), {"rel": rel})
+            for source in (md_p, meta_p):
+                if os.path.isfile(source):
+                    os.rename(source, os.path.join(folder, os.path.basename(source)))
+            return {"ok": True, "token": token}
+
+    def restore_article(self, token):
+        if not re.fullmatch(r"[0-9]+", str(token)):
+            return {"ok": False, "msg": "无效的恢复记录"}
+        with storage.lock:
+            directory = os.path.join(DRAFTS_DIR, ".trash", str(token))
+            with open(os.path.join(directory, "restore.json"), encoding="utf-8") as handle:
+                old_rel = json.load(handle)["rel"]
+            folder, slug = _rel_parts(old_rel)
+            new_rel = _unique_rel(folder, slug)
+            new_md, new_meta = _paths(new_rel)
+            os.makedirs(os.path.dirname(new_md), exist_ok=True)
+            for destination in (new_md, new_meta):
+                source = os.path.join(directory, slug + os.path.splitext(destination)[1])
+                if os.path.isfile(source):
+                    os.rename(source, destination)
+            return {"ok": True, "rel": new_rel}
+
+    def preview(self, md, platform, theme="", rel=""):
+        try:
+            base_dir = os.path.dirname(_paths(rel)[0]) if rel else DRAFTS_DIR
             if platform == "wechat":
-                return {"html": mdconvert.style_for_wechat(
-                    md, DRAFTS_DIR, FONT_R, FONT_B,
-                    theme or load_config().get("wechat_style") or
-                    mdconvert.DEFAULT_THEME)}
-            return {"html": mdconvert.richtext_html(md)}
-        except Exception as e:
-            return {"html": f"<p style='color:red'>预览失败: {e}</p>"}
+                rendered = mdconvert.style_for_wechat(md, base_dir, FONT_R, FONT_B,
+                    theme or load_config().get("wechat_style") or mdconvert.DEFAULT_THEME,
+                    preview=True)
+            else:
+                rendered = mdconvert.richtext_html(md, preview=True)
+                def embed(match):
+                    src = match.group(1)
+                    if not mdconvert.is_local(src):
+                        return match.group(0)
+                    try:
+                        uri = mdconvert.path_to_data_uri(mdconvert.local_path_of(src, base_dir))
+                        return match.group(0).replace(src, uri, 1)
+                    except OSError:
+                        return match.group(0)
+                rendered = mdconvert._IMG_RE.sub(embed, rendered)
+            return {"html": rendered}
+        except Exception as exc:
+            return {"html": "<p style='color:#c43b47'>预览失败: " + html.escape(str(exc)) + "</p>"}
 
     def wechat_themes(self):
         return mdconvert.theme_names()
@@ -437,32 +553,58 @@ class Api:
         return r[0] if r else ""
 
     def save_pasted_image(self, rel, data_url):
-        """编辑器粘贴图片：存到文章目录 assets/ 下，返回可写进 md 的 src。
-        已保存文章用相对路径（随文章走），未保存文章用绝对路径。"""
-        import base64
-        m = re.match(r"data:image/(\w+);base64,(.*)$", data_url or "", re.S)
-        if not m:
-            return {"ok": False, "msg": "不是图片数据"}
-        ext = m.group(1).lower().replace("jpeg", "jpg")
+        match = re.match(r"data:image/[\w.+-]+;base64,(.*)$", data_url or "", re.S)
+        if not match or len(match[1]) > image_store.MAX_BYTES * 4 // 3 + 8:
+            return {"ok": False, "msg": "支持小于 40 MB 的图片"}
         try:
-            raw = base64.b64decode(m.group(2))
-        except Exception:
-            return {"ok": False, "msg": "图片解码失败"}
-        folder, _ = _rel_parts(rel or "")
-        base = _folder_dir(folder) if rel else DRAFTS_DIR
-        adir = os.path.join(base, "assets")
-        os.makedirs(adir, exist_ok=True)
-        stem = "pasted_" + time.strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(adir, stem + "." + ext)
-        i = 2
-        while os.path.exists(path):
-            path = os.path.join(adir, f"{stem}_{i}.{ext}")
-            i += 1
-        with open(path, "wb") as f:
-            f.write(raw)
-        src = ("assets/" + os.path.basename(path)) if rel \
-            else path.replace("\\", "/")
-        return {"ok": True, "src": src}
+            raw = base64.b64decode(match[1], validate=True)
+            base = os.path.dirname(_paths(rel)[0]) if rel else DRAFTS_DIR
+            result = image_store.import_bytes(raw, base)
+            if not rel:
+                result["src"] = result["path"].replace("\\", "/")
+            return result
+        except Exception as exc:
+            return {"ok": False, "msg": str(exc)}
+
+    def import_image(self, rel, path):
+        try:
+            base = os.path.dirname(_paths(rel)[0]) if rel else DRAFTS_DIR
+            result = image_store.import_file(path, base)
+            if not rel:
+                result["src"] = result["path"].replace("\\", "/")
+            return result
+        except Exception as exc:
+            return {"ok": False, "msg": str(exc)}
+
+    def list_templates(self):
+        try:
+            with open(os.path.join(paths.DATA_DIR, "templates.json"), encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, ValueError):
+            return []
+
+    def save_template(self, name, md, style="blue", rel=""):
+        with storage.lock:
+            templates = self.list_templates()
+            entry = {"id": "custom_" + str(time.time_ns()), "name": (name or "").strip()[:60],
+                     "description": "我的模板", "md": md or "", "style": style}
+            if not entry["name"] or not entry["md"].strip():
+                return {"ok": False, "msg": "模板名称和正文不能为空"}
+            # Make custom templates independent of the source article's folder.
+            if entry["md"]:
+                base = os.path.dirname(_paths(rel)[0]) if rel else DRAFTS_DIR
+                entry["md"] = image_store.relocate_markdown(entry["md"], base, paths.DATA_DIR)
+                entry["md"] = re.sub(r'(!\[[^\]]*\]\()(<assets/[^>]+>|assets/[^)\s]+)([^)]*\))',
+                    lambda m: m[1] + "<" + os.path.join(paths.DATA_DIR, m[2].strip("<>")).replace("\\", "/") + ">" + m[3], entry["md"])
+            templates.append(entry)
+            storage.atomic_json(os.path.join(paths.DATA_DIR, "templates.json"), templates)
+            return {"ok": True, "template": entry}
+
+    def delete_template(self, template_id):
+        with storage.lock:
+            templates = [t for t in self.list_templates() if t["id"] != template_id]
+            storage.atomic_json(os.path.join(paths.DATA_DIR, "templates.json"), templates)
+        return {"ok": True}
 
     def pick_json(self):
         r = self._window.create_file_dialog(
@@ -475,44 +617,28 @@ class Api:
         return r[0] if r else ""
 
     def set_data_dir(self, path):
-        """切换数据目录：迁移 drafts/profiles/assets/history.json，写配置，重启生效。"""
         import shutil
-        path = (path or "").strip()
         if not path:
             return {"ok": False, "msg": "未选择目录"}
-        new_dir = os.path.abspath(path)
-        old_dir = paths.DATA_DIR
+        new_dir, old_dir = os.path.abspath(path), os.path.abspath(paths.DATA_DIR)
         if os.path.normcase(new_dir) == os.path.normcase(old_dir):
-            return {"ok": True, "msg": "已是当前数据目录", "data_dir": new_dir}
+            return {"ok": True, "msg": "已是当前数据目录", "data_dir": old_dir}
+        common = os.path.normcase(os.path.commonpath([old_dir, new_dir])) if os.path.splitdrive(old_dir)[0] == os.path.splitdrive(new_dir)[0] else ""
+        if common in (os.path.normcase(old_dir), os.path.normcase(new_dir)):
+            return {"ok": False, "msg": "请选择当前数据目录之外的独立文件夹"}
+        if any(os.path.exists(os.path.join(new_dir, name)) for name in ("drafts", "profiles", "assets", "history.json", "templates.json")):
+            return {"ok": False, "msg": "目标目录已有软件数据，请选择空目录，以免混用文章与登录态"}
         try:
             os.makedirs(new_dir, exist_ok=True)
-        except Exception as e:
-            return {"ok": False, "msg": f"目录不可用: {e}"}
-
-        moved, skipped = [], []
-        for name in ("drafts", "profiles", "assets", "history.json"):
-            src = os.path.join(old_dir, name)
-            dst = os.path.join(new_dir, name)
-            if not os.path.exists(src):
-                continue
-            if os.path.exists(dst):
-                skipped.append(name)   # 目标已有同名数据，不覆盖
-                continue
-            try:
-                shutil.move(src, dst)
-                moved.append(name)
-            except Exception as e:
-                return {"ok": False,
-                        "msg": f"迁移 {name} 失败: {e}（已迁移: {'、'.join(moved) or '无'}）"}
-
-        cfg = load_config()
-        cfg["data_dir"] = new_dir
-        save_config(cfg)
-        msg = "数据已迁移，重启软件后生效"
-        if skipped:
-            msg += f"；目标位置已存在 {('、'.join(skipped))}，未覆盖"
-        return {"ok": True, "msg": msg, "data_dir": new_dir,
-                "moved": moved, "skipped": skipped}
+            probe = os.path.join(new_dir, ".pushanything-write-test")
+            storage.atomic_text(probe, "ok")
+            os.remove(probe)
+            cfg = load_config()
+            cfg["pending_data_dir"] = new_dir
+            save_config(cfg)
+            return {"ok": True, "msg": "已安排下次启动时迁移；当前继续保存到原目录，原始数据会保留", "data_dir": new_dir}
+        except OSError as exc:
+            return {"ok": False, "msg": f"目录不可用: {exc}"}
 
     def pick_video(self):
         r = self._window.create_file_dialog(
@@ -529,48 +655,48 @@ class Api:
         return {"path": p, "name": os.path.basename(p), "size": size}
 
     def upload_video(self, payload):
-        if self._ui_job_id:
-            return {"ok": False, "msg": "上一个上传任务还在进行中"}
-        payload = dict(payload or {})
-        vp = (payload.get("video_path") or "").strip()
-        if not vp or not os.path.exists(vp):
-            return {"ok": False, "msg": "请先选择视频文件"}
-        if not (payload.get("title") or "").strip():
-            return {"ok": False, "msg": "标题不能为空"}
-        plats = payload.get("platforms", {})
-        if not any(plats.values()):
-            return {"ok": False, "msg": "请至少勾选一个平台"}
-        payload["_source"] = "ui"
-        job = jobs.queue.submit("video", payload)
-        self._ui_job_id = job.id
-        return {"ok": True, "task_id": job.id}
+        return self._submit_ui("video", payload)
 
     def list_jobs(self):
         return jobs.queue.recent(30)
 
     def get_config(self):
         cfg = load_config()
-        cfg["data_dir"] = paths.DATA_DIR   # 返回实际生效的数据目录
+        cfg["startup_warning"] = paths.STARTUP_WARNING
+        cfg["active_data_dir"] = paths.DATA_DIR
+        cfg["data_dir"] = cfg.get("pending_data_dir") or paths.DATA_DIR   # 返回实际生效的数据目录
         return cfg
 
     def save_config(self, cfg):
         cur = load_config()
-        cur.update(cfg or {})
+        update = dict(cfg or {})
+        if "api_port" in update:
+            try:
+                port = int(update["api_port"])
+                if not 1024 <= port <= 65535:
+                    raise ValueError()
+                update["api_port"] = port
+            except (TypeError, ValueError):
+                return {"ok": False, "msg": "端口应为 1024–65535 的整数"}
+        cur.update(update)
         save_config(cur)
         return cur
 
     # ---------- 登录检查 ----------
 
     def check_login(self, platform):
-        if self._busy:
+        if platform not in ("zhihu", "toutiao"):
+            return {"ok": False, "msg": "不支持的平台"}
+        if self._busy or any(j["status"] in ("running", "queued") for j in jobs.queue.recent()):
             return {"ok": False, "msg": "有任务进行中"}
+        self._busy = True
         threading.Thread(target=self._check_login, args=(platform,),
                          daemon=True).start()
         return {"ok": True}
 
     def _check_login(self, platform):
         import browser
-        self._busy = True
+        pw = ctx = None
         try:
             pw, ctx, page = browser.launch(platform)
             url = (zhihu_push.WRITE_URL if platform == "zhihu"
@@ -583,33 +709,49 @@ class Api:
                 self._emit("toast", f"{platform} 已登录，会话已保存")
             except RuntimeError:
                 self._emit("toast", f"{platform} 登录超时未完成")
-            browser.stop(pw, ctx)
         except Exception as e:
             self._emit("toast", f"检查登录失败: {e}")
         finally:
+            if pw and ctx:
+                browser.stop(pw, ctx)
             self._busy = False
 
     # ---------- 上传 ----------
 
     def upload(self, payload):
-        if self._ui_job_id:
-            return {"ok": False, "msg": "上一个上传任务还在进行中"}
-        if not (payload.get("title") or "").strip():
+        return self._submit_ui("article", payload)
+
+    def _submit_ui(self, kind, payload):
+        if self._busy:
+            return {"ok": False, "msg": "请先完成或关闭登录窗口，再提交上传"}
+        payload = dict(payload or {})
+        title = payload.get("title")
+        if not isinstance(title, str) or not title.strip():
             return {"ok": False, "msg": "标题不能为空"}
-        plats = payload.get("platforms", {})
-        if not any(plats.values()):
-            return {"ok": False, "msg": "请至少勾选一个平台"}
-        payload = dict(payload)
+        platforms = payload.get("platforms", {})
+        allowed = {"wechat", "zhihu", "toutiao"} if kind == "article" else {"zhihu", "toutiao"}
+        if not isinstance(platforms, dict) or not any(platforms.values()) or any(p not in allowed for p, enabled in platforms.items() if enabled):
+            return {"ok": False, "msg": "请至少勾选一个支持的平台"}
+        if kind == "video" and not os.path.isfile(payload.get("video_path") or ""):
+            return {"ok": False, "msg": "请先选择有效的视频文件"}
+        if kind == "article" and not (payload.get("md") or "").strip():
+            return {"ok": False, "msg": "文章正文不能为空"}
         payload["_source"] = "ui"
         payload.setdefault("base_dir", DRAFTS_DIR)
-        payload.setdefault("style",
-                         load_config().get("wechat_style") or
-                         mdconvert.DEFAULT_THEME)
-        job = jobs.queue.submit("article", payload)
-        self._ui_job_id = job.id
+        payload.setdefault("style", load_config().get("wechat_style") or mdconvert.DEFAULT_THEME)
+        job = jobs.queue.submit(kind, payload)
         return {"ok": True, "task_id": job.id}
 
-    # ---------- 飞书备份 ----------
+    def retry_job(self, job_id):
+        try:
+            job = jobs.queue.retry(job_id)
+            return {"ok": True, "task_id": job.id}
+        except ValueError as exc:
+            return {"ok": False, "msg": str(exc)}
+
+    def cancel_job(self, job_id):
+        ok = jobs.queue.cancel(job_id)
+        return {"ok": ok, "msg": "已取消排队任务" if ok else "任务已开始执行，请等待结果"}
 
     def feishu_backup(self, payload):
         """手动备份当前文章到飞书。"""
@@ -647,7 +789,7 @@ class Api:
             "port": int(cfg.get("api_port", 8737)),
             "running": api_server._server is not None,
             "auth": bool(cfg.get("api_token")),
-            "lan": bool(cfg.get("api_lan", True)),
+            "lan": bool(cfg.get("api_lan", False)),
         }
 
     # ---------- 手机端（局域网网页） ----------

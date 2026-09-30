@@ -16,6 +16,18 @@ import base64
 import tempfile
 import requests
 import markdown
+import functools
+import threading
+
+_render_lock = threading.RLock()
+
+
+def _render_locked(fn):
+    @functools.wraps(fn)
+    def render(*args, **kwargs):
+        with _render_lock:
+            return fn(*args, **kwargs)
+    return render
 
 MD_EXTS = ["extra", "tables", "fenced_code", "sane_lists", "nl2br"]
 
@@ -63,7 +75,13 @@ def download_image(url: str) -> str:
 
 
 def local_path_of(src: str, base_dir: str) -> str:
-    src = src.replace("file://", "")
+    if src.startswith("file:"):
+        from urllib.parse import urlparse, unquote
+        from urllib.request import url2pathname
+        parsed = urlparse(src)
+        src = url2pathname(unquote(parsed.path))
+        if parsed.netloc:
+            src = "//" + parsed.netloc + src
     if not os.path.isabs(src):
         src = os.path.join(base_dir, src)
     return os.path.normpath(src)
@@ -118,8 +136,11 @@ def extract_math(md_text: str):
     return text, maths
 
 
-def render_math_png(tex: str, display: bool = False):
+@functools.lru_cache(maxsize=128)
+@_render_locked
+def render_math_png(tex: str, display: bool = False, allow_network=True):
     """LaTeX -> PNG 路径。本地 mathtext 优先；复杂语法(codecogs)；最后 PIL 文本兜底。"""
+    fig = None
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -130,11 +151,15 @@ def render_math_png(tex: str, display: bool = False):
         os.close(fd)
         fig.savefig(path, dpi=220, transparent=True,
                     bbox_inches="tight", pad_inches=0.04)
-        plt.close(fig)
         return path
     except Exception:
         pass
+    finally:
+        if fig is not None:
+            plt.close(fig)
     try:
+        if not allow_network:
+            raise ValueError("本地预览不请求公式服务")
         q = requests.utils.quote(
             ("\\displaystyle " if display else "") + tex)
         url = "https://latex.codecogs.com/png.image?\\dpi{220}" + q
@@ -163,8 +188,8 @@ def render_math_png(tex: str, display: bool = False):
         return None
 
 
-def _math_img(tex: str, display: bool, as_data_uri: bool) -> str:
-    path = render_math_png(tex, display)
+def _math_img(tex: str, display: bool, as_data_uri: bool, allow_network=True) -> str:
+    path = render_math_png(tex, display, allow_network)
     safe_alt = tex.replace('"', "&quot;").replace("<", "&lt;")
     if not path:
         return "<code>%s</code>" % safe_alt
@@ -174,9 +199,9 @@ def _math_img(tex: str, display: bool, as_data_uri: bool) -> str:
     return '<img src="%s" alt="%s" style="%s"/>' % (src, safe_alt, st)
 
 
-def _embed_math(html: str, maths: dict, as_data_uri: bool) -> str:
+def _embed_math(html: str, maths: dict, as_data_uri: bool, allow_network=True) -> str:
     for tok, (tex, display) in maths.items():
-        img = _math_img(tex, display, as_data_uri)
+        img = _math_img(tex, display, as_data_uri, allow_network)
         html = re.sub(r'<p[^>]*>\s*%s\s*</p>' % tok,
                       lambda m: img, html)
         html = html.replace(tok, img)
@@ -203,6 +228,7 @@ def _table_rows(table_html: str):
     return rows
 
 
+@functools.lru_cache(maxsize=64)
 def render_table_png(table_html: str, font_regular: str, font_bold: str,
                      width: int = 750) -> str:
     """清爽清新风格表格图，返回 PNG 文件路径。"""
@@ -305,6 +331,14 @@ _BASE = "font-size:15px;line-height:1.8;color:#000000;"
 
 # 主题：h2 渲染模式 block(整块底色) / bar(左侧粗竖条) / underline(底部粗线)
 WECHAT_THEMES = {
+    "wild": {
+        "name": "旷野 · 野生观察",
+        "h2_mode": "wild", "h2_color": "#25231F",
+        "strong": "#A8402B", "link": "#A8402B",
+        "quote_bar": "#A8402B", "quote_color": "#25231F",
+        "quote_bg": "#EFE8DC", "quote_border": "#D8CBBB",
+        "code_bg": "#EFEAE1", "hr": "#25231F",
+    },
     "red": {
         "name": "经典红",
         "h2_mode": "block", "h2_color": "#C43B47",
@@ -375,7 +409,14 @@ def _h_underline(text, color):
             '</td></tr></table>')
 
 
-_H_MODES = {"block": _h_block, "bar": _h_bar, "underline": _h_underline}
+def _h_wild(text, color, index=1):
+    return (f'<section style="margin:38px 0 18px;padding-top:12px;border-top:2px solid {color};">'
+            f'<p style="margin:0 0 9px;font-family:Georgia,serif;font-size:12px;letter-spacing:2px;color:#A8402B;">{index:02d} /</p>'
+            f'<p style="margin:0;font-size:24px;font-weight:800;line-height:1.4;letter-spacing:1px;color:{color};">{text}</p>'
+            '</section>')
+
+
+_H_MODES = {"block": _h_block, "bar": _h_bar, "underline": _h_underline, "wild": _h_wild}
 
 
 def _wrap_td_li(html: str) -> str:
@@ -389,11 +430,13 @@ def _wrap_td_li(html: str) -> str:
 
 
 def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
-                     theme: str = DEFAULT_THEME) -> str:
+                     theme: str = DEFAULT_THEME, preview=False) -> str:
     """markdown 源文 -> 公众号内联样式 HTML（图片/公式转 base64，表格转 PNG）。
     theme ∈ WECHAT_THEMES。"""
     th = WECHAT_THEMES.get(theme) or WECHAT_THEMES[DEFAULT_THEME]
     h_fn = _H_MODES[th["h2_mode"]]
+    wild = theme == "wild"
+    base = "font-size:16px;line-height:1.95;color:#25231F;letter-spacing:0.3px;" if wild else _BASE
 
     md_text, maths = extract_math(md_text)
     html = md_to_html(md_text)
@@ -407,6 +450,8 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
             if src.startswith("data:"):
                 uri = src
             elif is_remote(src):
+                if preview:
+                    return tag
                 uri = path_to_data_uri(download_image(src))
             else:
                 uri = path_to_data_uri(local_path_of(src, base_dir))
@@ -417,29 +462,39 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
     html = _IMG_RE.sub(img_rep, html)
 
     # 3) 标题 -> 主题化单格 table
+    heading_index = 0
     def h_repl(m):
+        nonlocal heading_index
         text = re.sub(r'<[^>]+>', '', m.group(2)).strip()
+        if wild:
+            if int(m.group(1)) == 1:
+                return f'<p style="margin:8px 0 28px;font-size:30px;font-weight:800;line-height:1.45;letter-spacing:0.5px;color:#25231F;">{text}</p>'
+            if int(m.group(1)) >= 3:
+                return f'<p style="margin:26px 0 12px;font-size:18px;font-weight:700;line-height:1.5;color:#25231F;">{text}</p>'
+            heading_index += 1
+            return _h_wild(text, th["h2_color"], heading_index)
         return h_fn(text, th["h2_color"])
     html = re.sub(r'<h([1-4])[^>]*>(.*?)</h\1>', h_repl, html, flags=re.S | re.I)
 
     # 4) 段落 / 引用 / 列表 / 代码样式
-    html = re.sub(r'<p>', f'<p style="margin:16px 0;{_BASE}">', html)
+    html = re.sub(r'<p>', f'<p style="margin:18px 0;{base}">', html)
 
     def _quote_repl(m):
         inner = re.sub(
             r'<p[^>]*>',
-            f'<p style="margin:8px 0 0;{_BASE}color:{th["quote_color"]};">',
+            f'<p style="margin:8px 0 0;{base}color:{th["quote_color"]};">',
             m.group(1))
         inner = inner.replace("margin:8px 0 0", "margin:0", 1)  # 首段不加顶距
-        return (f'<section style="margin:16px 0;padding:16px 20px;'
-                f'background:{th["quote_bg"]};border-radius:14px;'
-                f'border:1px solid {th["quote_border"]};">'
+        quote_shape = "border-left:4px solid #A8402B;" if wild else "border-radius:14px;"
+        return (f'<section style="margin:24px 0;padding:18px 20px;'
+                f'background:{th["quote_bg"]};'
+                f'border:1px solid {th["quote_border"]};{quote_shape}">'
                 f'{inner}</section>')
 
     html = re.sub(r'<blockquote>(.*?)</blockquote>', _quote_repl,
                   html, flags=re.S)
     html = re.sub(r'</?blockquote>', '', html)
-    html = re.sub(r'<li>', '<li style="' + _BASE + '">', html)
+    html = re.sub(r'<li>', '<li style="' + base + '">', html)
     html = _wrap_td_li(html)
     html = re.sub(r'<strong>', f'<strong style="color:{th["strong"]};">', html)
     html = re.sub(r'<a ', f'<a style="color:{th["link"]};" ', html)
@@ -448,12 +503,16 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
     html = re.sub(r'<hr\s*/?>', f'<p style="margin:24px 0;border-top:1px solid {th["hr"]};"></p>', html)
 
     # 5) 数学公式 -> PNG(base64)
-    html = _embed_math(html, maths, as_data_uri=True)
+    html = _embed_math(html, maths, as_data_uri=True, allow_network=not preview)
 
     # 6) 清理：空段落、注释、多余空行
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
     html = re.sub(r'<p[^>]*>\s*</p>', '', html)
     html = re.sub(r'\n{2,}', '\n', html)
+    if wild:
+        html = ('<section style="background:#FAF7F0;padding:22px 20px 28px;">'
+                '<p style="margin:0 0 28px;padding-bottom:12px;border-bottom:1px solid #D8CBBB;font-size:11px;letter-spacing:2px;color:#8A7966;">旷野 / WILD NOTES</p>'
+                + html + '</section>')
     return html.strip()
 
 
@@ -466,11 +525,11 @@ def style_for_richtext(html: str) -> str:
     return html.strip()
 
 
-def richtext_html(md_text: str) -> str:
+def richtext_html(md_text: str, preview=False) -> str:
     """富文本预览/粘贴用 HTML（公式转 base64 图）。"""
     md_text, maths = extract_math(md_text)
     html = md_to_html(md_text)
-    html = _embed_math(html, maths, as_data_uri=True)
+    html = _embed_math(html, maths, as_data_uri=True, allow_network=not preview)
     return style_for_richtext(html)
 
 

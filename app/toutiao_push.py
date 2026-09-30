@@ -27,7 +27,7 @@ DRAFT_BTN_SEL = [
     'button:has-text("保存草稿")',
     'span:has-text("存草稿")',
 ]
-SAVED_SEL = ['text=已保存', 'text=保存成功', 'text=草稿', '[class*="toast"]']
+SAVED_SEL = ['text=/^(已保存|保存成功|草稿已保存)$/']
 
 
 def push_draft(title, segments, headless=False, log=print):
@@ -43,7 +43,7 @@ def push_draft(title, segments, headless=False, log=print):
             title_loc.fill(title)
             log("标题已填入")
         else:
-            log("未找到标题框（仍继续填正文）")
+            raise RuntimeError("未找到标题框，请检查登录状态或平台页面")
 
         body.click()
         page.keyboard.press("End")
@@ -64,6 +64,7 @@ def push_draft(title, segments, headless=False, log=print):
 
         shot = browser.screenshot(page, "toutiao_done.png")
         log(f"完成截图: {shot}")
-        return True
+        return {"ok": True} if saved else {"ok": True, "needs_attention": True,
+            "note": "已点击保存，未确认保存结果；请到头条后台检查草稿", "screenshot": shot}
     finally:
         browser.stop(pw, ctx)

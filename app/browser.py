@@ -19,13 +19,15 @@ def launch(platform: str, headless: bool = False):
     pw = sync_playwright().start()
     profile = os.path.join(PROFILE_ROOT, platform)
     os.makedirs(profile, exist_ok=True)
-    ctx = pw.chromium.launch_persistent_context(
-        profile,
-        channel="msedge",
-        headless=headless,
-        viewport={"width": 1280, "height": 860},
-        args=["--disable-blink-features=AutomationControlled"],
-    )
+    try:
+        ctx = pw.chromium.launch_persistent_context(
+            profile, channel="msedge", headless=headless,
+            viewport={"width": 1280, "height": 860},
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+    except Exception:
+        pw.stop()
+        raise
     page = ctx.pages[0] if ctx.pages else ctx.new_page()
     return pw, ctx, page
 
@@ -173,7 +175,7 @@ def _upload_image(page, path, btn_selectors, wait_ms, log):
         except Exception:
             pass
         page.wait_for_timeout(500)
-    log("  图片上传超时（可能仍在后台上传），继续")
+    raise RuntimeError("图片上传超时，未确认图片已进入正文。请检查平台草稿后再重试")
 
 
 def screenshot(page, name):
