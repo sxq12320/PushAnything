@@ -1,0 +1,25 @@
+#formulaMask { position:fixed; inset:0; z-index:120; background:#00000038; display:flex; align-items:center; justify-content:center; }
+#formulaSheet { width:740px; max-width:94vw; max-height:90vh; border-radius:18px; background:#fff; box-shadow:0 24px 80px #00000024; overflow:hidden; display:flex; flex-direction:column; }
+#formulaSheet h2 { font-size:20px; font-weight:650; }
+#formulaSheet .sheet-head p { font-size:12px; color:var(--muted); margin-top:7px; }
+.formula-body { padding:0 24px 22px; overflow:auto; }
+.formula-options { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+#formulaFontHint { font-size:11px; color:var(--muted); }
+.formula-snippets { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+.formula-snippets button { border:1px solid #e5e5ea; background:#fafafa; border-radius:7px; padding:5px 10px; font:12px inherit; color:#424248; cursor:pointer; }
+.formula-snippets button:hover { border-color:#a5cafa; background:#f0f6ff; }
+.formula-label { display:block; font-size:12px; color:#666670; margin:10px 0 8px; }
+#formulaSource { width:100%; min-height:120px; resize:vertical; border:1px solid #dfdfe5; border-radius:9px; padding:12px; font:14px/1.8 Consolas,'Microsoft YaHei',monospace; color:#25252a; background:#fafafa; tab-size:2; box-sizing:border-box; }
+#formulaSource:focus { outline:2px solid #95bdf2; outline-offset:1px; }
+#formulaError { min-height:22px; padding-top:7px; color:#ba3d32; font-size:12px; overflow-wrap:anywhere; }
+.formula-live-preview { padding:18px 12px; min-height:62px; border:1px solid #e5e5ea; border-radius:9px; background:#faf7f0; overflow-x:auto; color:#25231f; font-size:18px; }
+.formula-live-preview .katex-display { margin:0; text-align:left; }
+.formula-live-preview .katex { font-size:1em; }
+.formula-help { margin-top:12px; font-size:11px; line-height:1.8; color:var(--muted); }
+#vditor div.language-math[data-math] { overflow-x:auto; }
+#vditor div.language-math > .katex-display { margin:10px 0; }
+#vditor div.language-math > .katex-display > .katex { font-size:18px; white-space:normal; }
+#vditor div.language-math > .katex-display > .katex > .katex-html > .base { margin:.12em 0; }
+#vditor span.language-math > .katex { font-size:16px; }
+#vditor .language-math[data-math] { cursor:text; }
+@media(max-height:650px) { #formulaSource { min-height:80px; } .formula-live-preview { min-height:42px; padding:12px; } }

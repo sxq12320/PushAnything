@@ -6,6 +6,7 @@ wechat_push.py — 推送草稿到公众号草稿箱（官方 draft/add API）�
 import os
 import re
 import json
+import html
 import base64
 import tempfile
 import requests
@@ -74,7 +75,7 @@ def _inline_images(cfg, token, content, log):
                     f.write(r.content)
             _, url = _upload(cfg, token, tmp)
             log(f"  正文图片已上传 ({os.path.getsize(tmp)}B)")
-            return f'<img src="{url}"/>'
+            return m.group(0).replace(src, html.escape(url, quote=True), 1)
         except Exception as e:
             log(f"  正文图片上传失败，已移除: {e}")
             return ""

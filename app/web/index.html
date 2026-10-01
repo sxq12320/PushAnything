@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="vendor/vditor.css">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="studio.css">
+<link rel="stylesheet" href="vendor/dist/js/katex/katex.min.css">
+<link rel="stylesheet" href="math-editor.css">
 </head>
 <body>
 <!-- 自定义标题栏（无边框窗口） -->
@@ -419,8 +421,26 @@
 </div>
 <div id="imageMask" class="hidden"><div class="image-viewer" role="dialog" aria-modal="true" aria-label="查看图片"><button id="btnCloseImage" class="btn">关闭 · Esc</button><img id="imageView" alt="图片预览"><span id="imageViewCaption"></span></div></div>
 <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+<div id="formulaMask" class="hidden">
+  <div id="formulaSheet" role="dialog" aria-modal="true" aria-labelledby="formulaHeading">
+    <div class="sheet-head"><div><h2 id="formulaHeading">编写公式</h2><p>输入 LaTeX，下面实时查看排版。</p></div><button id="btnCloseFormula" class="icon-btn" aria-label="关闭公式编辑器">×</button></div>
+    <div class="formula-body">
+      <div class="formula-options"><div class="segmented"><button id="btnFormulaInline">行内公式</button><button id="btnFormulaBlock" class="active">独立公式</button></div><span id="formulaFontHint"></span></div>
+      <div id="formulaSnippets" class="formula-snippets" aria-label="常用公式结构"></div>
+      <label for="formulaSource" class="formula-label">LaTeX 源码</label>
+      <textarea id="formulaSource" spellcheck="false" placeholder="例如：\frac{a}{b}" aria-describedby="formulaError"></textarea>
+      <div id="formulaError" role="status" aria-live="polite"></div>
+      <div class="formula-label">排版预览</div><div id="formulaLivePreview" class="formula-live-preview"></div>
+      <p id="formulaWarning" class="formula-help" role="status"></p>
+      <p class="formula-help">长公式保持字号，可以横向查看。多行推导用 aligned，换行写 \\，用 &amp; 对齐。</p>
+    </div>
+    <div class="sheet-foot"><span class="hint">Ctrl+Enter 确认 · Esc 取消</span><button id="btnApplyFormula" class="btn primary">插入公式</button></div>
+  </div>
+</div>
 <script src="vendor/vditor.min.js"></script>
+<script src="vendor/dist/js/katex/katex.min.js"></script>
 <script src="app.js"></script>
 <script src="studio.js"></script>
+<script src="math-editor.js"></script>
 </body>
 </html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="vendor/dist/js/katex/katex.min.css">
+<style>
+html,body { margin:0; padding:0; background:transparent; color:#25231f; }
+body { font-size:18px; line-height:1; white-space:nowrap; }
+#formula { display:inline-block; padding:3px; box-sizing:border-box; line-height:1.2; }
+#formula .katex { font-size:1em; }
+#formula .katex-display { margin:0; }
+#formula.wrap .katex-display > .katex { white-space:normal; }
+#formula.wrap > .katex { white-space:normal; }
+#formula.wrap .katex-html > .base { margin:.12em 0; }
+#baseline { display:inline-block; height:0; width:0; vertical-align:baseline; }
+</style>
+</head>
+<body><div id="formula"></div><span id="baseline"></span>
+<script src="vendor/dist/js/katex/katex.min.js"></script>
+<script>
+async function renderFormula({tex, display, fontSize, maxWidth}) {
+  const root = document.getElementById('formula');
+  document.body.style.fontSize = fontSize + 'px';
+  root.style.fontSize = fontSize + 'px';
+  root.style.maxWidth = maxWidth ? maxWidth + 'px' : 'none';
+  root.classList.toggle('wrap', !!maxWidth);
+  try {
+    katex.render(tex, root, {displayMode:display, output:'html', throwOnError:true,
+      trust:false, strict:false, maxSize:20, maxExpand:1000});
+    await document.fonts.ready;
+    const box = root.getBoundingClientRect();
+    const parts = Array.from(root.querySelectorAll('.base'));
+    const overflow = root.scrollWidth > root.clientWidth + 1 || parts.some(part => {
+      const bounds = part.getBoundingClientRect();
+      return bounds.left < box.left - 1 || bounds.right > box.right + 1;
+    });
+    if (maxWidth && overflow) {
+      return {ok:false, kind:'layout', error:'公式中的单个分式、矩阵或括号组超出栏宽，请用 aligned 分行或拆分后再投递。'};
+    }
+    if (box.width > 16000 || box.height > 6000) return {ok:false,error:'公式尺寸过大，请拆分为多个公式。'};
+    return {ok:true, baseline:Math.max(0, box.bottom - document.getElementById('baseline').getBoundingClientRect().top)};
+  } catch (error) {
+    return {ok:false, error:error.message.replace(/^KaTeX parse error:\s*/, '')};
+  }
+}
+</script></body></html>

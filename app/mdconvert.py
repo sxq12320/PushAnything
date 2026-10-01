@@ -17,17 +17,8 @@ import tempfile
 import requests
 import markdown
 import functools
-import threading
-
-_render_lock = threading.RLock()
-
-
-def _render_locked(fn):
-    @functools.wraps(fn)
-    def render(*args, **kwargs):
-        with _render_lock:
-            return fn(*args, **kwargs)
-    return render
+import html as html_module
+import math_render
 
 MD_EXTS = ["extra", "tables", "fenced_code", "sane_lists", "nl2br"]
 
@@ -98,10 +89,10 @@ def path_to_data_uri(path: str) -> str:
 
 # ---------- 数学公式：LaTeX -> PNG ----------
 
-_FENCE_RE = re.compile(r'```[^\n]*\n.*?```', re.S)
-_CODE_RE = re.compile(r'`[^`\n]+`')
-_MATH_BLOCK_RE = re.compile(r'\$\$(.+?)\$\$', re.S)
-_MATH_INLINE_RE = re.compile(r'(?<![\\$])\$(?!\$)([^$\n]+?)(?<!\s)\$(?!\$)')
+_FENCE_RE = re.compile(r'(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*(?:\n|$)', re.S)
+_CODE_RE = re.compile(r'(`+)[^\n]*?\1')
+_MATH_BLOCK_RE = re.compile(r'(?<!\\)\$\$(.*?)(?<!\\)\$\$', re.S)
+_MATH_INLINE_RE = re.compile(r'(?<![\\$])\$(?!\$)((?:\\.|[^$\\\n])+?)(?<!\s)\$(?!\$)')
 
 
 def extract_math(md_text: str):
@@ -136,72 +127,41 @@ def extract_math(md_text: str):
     return text, maths
 
 
-@functools.lru_cache(maxsize=128)
-@_render_locked
 def render_math_png(tex: str, display: bool = False, allow_network=True):
-    """LaTeX -> PNG 路径。本地 mathtext 优先；复杂语法(codecogs)；最后 PIL 文本兜底。"""
-    fig = None
+    """兼容旧调用；始终使用本地 KaTeX，不将公式发送到外部服务。"""
+    return math_render.render_formula(tex, display).path
+
+
+def _math_img(tex: str, display: bool, as_data_uri: bool, preview=False) -> str:
+    safe_alt = html_module.escape(tex, quote=True)
     try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        fig = plt.figure()
-        fig.text(0, 0, "$%s$" % tex, fontsize=17 if display else 15)
-        fd, path = tempfile.mkstemp(suffix=".png", dir=TMP_DIR)
-        os.close(fd)
-        fig.savefig(path, dpi=220, transparent=True,
-                    bbox_inches="tight", pad_inches=0.04)
-        return path
-    except Exception:
-        pass
-    finally:
-        if fig is not None:
-            plt.close(fig)
-    try:
-        if not allow_network:
-            raise ValueError("本地预览不请求公式服务")
-        q = requests.utils.quote(
-            ("\\displaystyle " if display else "") + tex)
-        url = "https://latex.codecogs.com/png.image?\\dpi{220}" + q
-        r = requests.get(url, timeout=25,
-                         headers={"User-Agent": "Mozilla/5.0"})
-        r.raise_for_status()
-        fd, path = tempfile.mkstemp(suffix=".png", dir=TMP_DIR)
-        with os.fdopen(fd, "wb") as f:
-            f.write(r.content)
-        return path
-    except Exception:
-        pass
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        f = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", 18)
-        tmp = Image.new("RGB", (10, 10))
-        d = ImageDraw.Draw(tmp)
-        box = d.textbbox((0, 0), tex, font=f)
-        img = Image.new("RGB", (box[2] + 20, box[3] + 14), "#FFFFFF")
-        ImageDraw.Draw(img).text((10, 7), tex, font=f, fill="#333333")
-        fd, path = tempfile.mkstemp(suffix=".png", dir=TMP_DIR)
-        os.close(fd)
-        img.save(path)
-        return path
-    except Exception:
-        return None
+        try:
+            image = math_render.render_formula(tex, display, max_width=math_render.EXPORT_WIDTH)
+        except math_render.MathLayoutError:
+            if not preview:
+                raise
+            image = math_render.render_formula(tex, display)
+    except math_render.MathRenderError as error:
+        if not preview:
+            raise math_render.MathRenderError('公式无法投递：' + str(error)) from error
+        tag = 'section' if display else 'span'
+        return (f'<{tag} style="color:#B43C32;font-size:14px;overflow-wrap:anywhere;">'
+                f'公式未完成：{html_module.escape(str(error))}<br><code>{safe_alt}</code></{tag}>')
+    src = path_to_data_uri(image.path) if as_data_uri else image.path
+    style = (f'width:{image.width:.3f}px;height:{image.height:.3f}px;max-width:none;'
+             'border-radius:0;display:block;')
+    image_html = (f'<img src="{src}" alt="{safe_alt}" width="{round(image.width)}" '
+        f'height="{round(image.height)}" data-formula="1" style="{style}margin:0 auto;"/>')
+    if display:
+        return ('<section style="max-width:100%;overflow-x:auto;margin:14px 0;line-height:0;">'
+                + image_html + '</section>')
+    return (f'<span style="display:inline-block;max-width:100%;overflow-x:auto;'
+            f'vertical-align:-{image.baseline:.3f}px;line-height:0;">{image_html}</span>')
 
 
-def _math_img(tex: str, display: bool, as_data_uri: bool, allow_network=True) -> str:
-    path = render_math_png(tex, display, allow_network)
-    safe_alt = tex.replace('"', "&quot;").replace("<", "&lt;")
-    if not path:
-        return "<code>%s</code>" % safe_alt
-    src = path_to_data_uri(path) if as_data_uri else path
-    st = ("display:block;margin:14px auto;max-width:96%;" if display
-          else "vertical-align:middle;max-height:1.7em;")
-    return '<img src="%s" alt="%s" style="%s"/>' % (src, safe_alt, st)
-
-
-def _embed_math(html: str, maths: dict, as_data_uri: bool, allow_network=True) -> str:
+def _embed_math(html: str, maths: dict, as_data_uri: bool, preview=False) -> str:
     for tok, (tex, display) in maths.items():
-        img = _math_img(tex, display, as_data_uri, allow_network)
+        img = _math_img(tex, display, as_data_uri, preview)
         html = re.sub(r'<p[^>]*>\s*%s\s*</p>' % tok,
                       lambda m: img, html)
         html = html.replace(tok, img)
@@ -503,7 +463,7 @@ def style_for_wechat(md_text: str, base_dir: str, font_r: str, font_b: str,
     html = re.sub(r'<hr\s*/?>', f'<p style="margin:24px 0;border-top:1px solid {th["hr"]};"></p>', html)
 
     # 5) 数学公式 -> PNG(base64)
-    html = _embed_math(html, maths, as_data_uri=True, allow_network=not preview)
+    html = _embed_math(html, maths, as_data_uri=True, preview=preview)
 
     # 6) 清理：空段落、注释、多余空行
     html = re.sub(r'<!--.*?-->', '', html, flags=re.S)
@@ -529,7 +489,7 @@ def richtext_html(md_text: str, preview=False) -> str:
     """富文本预览/粘贴用 HTML（公式转 base64 图）。"""
     md_text, maths = extract_math(md_text)
     html = md_to_html(md_text)
-    html = _embed_math(html, maths, as_data_uri=True, allow_network=not preview)
+    html = _embed_math(html, maths, as_data_uri=True, preview=preview)
     return style_for_richtext(html)
 
 
@@ -558,8 +518,13 @@ def make_segments(md_text: str, base_dir: str, font_r: str, font_b: str):
                 path = download_image(src)
             else:
                 path = local_path_of(src, base_dir)
-            segs.append({"type": "image", "path": path,
-                         "alt": alt.group(1) if alt else ""})
+            segment = {"type": "image", "path": path,
+                       "alt": alt.group(1) if alt else ""}
+            if 'data-formula="1"' in tag:
+                width = re.search(r'\bwidth="(\d+)"', tag)
+                height = re.search(r'\bheight="(\d+)"', tag)
+                segment.update(formula=True, width=int(width[1]), height=int(height[1]))
+            segs.append(segment)
         except Exception as e:
             segs.append({"type": "html", "html": f"<p>[图片加载失败: {src} ({e})]</p>"})
         pos = m.end()

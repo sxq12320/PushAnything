@@ -42,6 +42,23 @@ def check():
         if '真实桥接' not in api.load_article(rel)['md']:
             raise RuntimeError('Autosaved content mismatch')
         report['passed'].append('Native bridge autosaves to isolated data directory')
+        math_source = '$$x=x+x$$\n\n$$x=' + '+'.join(['x'] * 35) + '$$'
+        window.evaluate_js('setMd(' + json.dumps(math_source) + ');markDirty(true);updatePreview();')
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if window.evaluate_js('document.getElementById("preview").contentDocument.images.length === 2 && Array.from(document.getElementById("preview").contentDocument.images).every(i=>i.complete)'):
+                break
+            time.sleep(.2)
+        else:
+            raise RuntimeError('Native formula image preview failed')
+        if not window.evaluate_js('Array.from(document.querySelectorAll("#vditor [data-math] .katex")).every(n=>getComputedStyle(n).fontSize === "18px")'):
+            raise RuntimeError('Native formula font size changed')
+        report['passed'].append('Native formulas render at a fixed font size through the real bridge')
+        window.evaluate_js('openFormula(true);document.getElementById("formulaSource").value="\\\\frac{a}{b}";renderFormulaEditor();')
+        if not window.evaluate_js('formulaValid && !document.getElementById("formulaMask").classList.contains("hidden")'):
+            raise RuntimeError('Native formula editor did not validate')
+        window.evaluate_js('closeFormula();')
+        report['passed'].append('Native formula editor validates and closes')
         window.evaluate_js('openTemplates();')
         time.sleep(.5)
         if not window.evaluate_js('!document.getElementById("templateMask").classList.contains("hidden")'):

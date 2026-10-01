@@ -426,7 +426,7 @@ const focusStack = [];
 function focusDialog(dialog) {
   if (focusStack.at(-1)?.dialog === dialog) return;
   focusStack.push({dialog, previous: document.activeElement});
-  const focusable = dialog.querySelector('button, input, [tabindex="0"]');
+  const focusable = dialog.querySelector('button, input, textarea, select, [tabindex="0"]');
   if (focusable) focusable.focus();
 }
 function restoreDialogFocus() { const saved = focusStack.pop(); if (saved?.previous?.isConnected) saved.previous.focus(); }
@@ -439,7 +439,7 @@ document.addEventListener('keydown', event => {
   }
   if (event.key === 'Tab' && focusStack.length) {
     const dialog = focusStack.at(-1).dialog;
-    const controls = Array.from(dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')).filter(control => control.getClientRects().length);
+    const controls = Array.from(dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')).filter(control => control.getClientRects().length);
     const first = controls[0], last = controls.at(-1);
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }

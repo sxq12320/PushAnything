@@ -62,9 +62,34 @@ def serve():
         pass
 
 
+def check_math(output_path):
+    """Headless diagnostics for the packaged fonts and formula renderer."""
+    import json
+    import math_render
+    from pathlib import Path
+    report = {'ok':False}
+    try:
+        short = math_render.render_formula('x=x+x', True)
+        long = math_render.render_formula('x=' + '+'.join(['x'] * 45), True)
+        wrapped = math_render.render_formula('x=' + '+'.join(['x'] * 45), True, max_width=320)
+        aligned = math_render.render_formula(r'\begin{aligned}a&=b+c\\d&=e+f\end{aligned}', True)
+        assert short.height == long.height
+        assert wrapped.width <= 320 and wrapped.height > short.height
+        assert aligned.height > short.height
+        report.update(ok=True, fixed_font_size=True, offline_aligned=True,
+            short_css_size=[short.width, short.height], long_css_size=[long.width, long.height],
+            wrapped_css_size=[wrapped.width, wrapped.height])
+    except Exception as error:
+        report['error'] = str(error)
+    Path(output_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    return 0 if report['ok'] else 1
+
+
 if __name__ == "__main__":
     try:
-        if "--serve" in sys.argv:
+        if "--check-math" in sys.argv:
+            sys.exit(check_math(sys.argv[sys.argv.index('--check-math') + 1]))
+        elif "--serve" in sys.argv:
             serve()
         else:
             main()

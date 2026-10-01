@@ -139,14 +139,21 @@ def fill_segments(page, body_loc, segments, log,
             mode = paste_html(page, body_loc, seg["html"])
             log(f"  文本段 {i+1}/{len(segments)} 已粘贴({mode})")
         else:
-            _upload_image(page, seg["path"], img_button_selectors,
-                          img_input_wait_ms, log)
+            image = _upload_image(page, seg["path"], img_button_selectors,
+                                  img_input_wait_ms, log, body_loc)
+            if seg.get('formula'):
+                image.evaluate('''(node, size) => {
+                    node.width = size.width; node.height = size.height;
+                    node.style.width = size.width + 'px'; node.style.height = size.height + 'px';
+                    node.style.maxWidth = 'none'; node.style.objectFit = 'contain';
+                }''', {'width': seg['width'], 'height': seg['height']})
             log(f"  图片 {i+1}/{len(segments)} 已插入: {os.path.basename(seg['path'])}")
 
 
-def _upload_image(page, path, btn_selectors, wait_ms, log):
+def _upload_image(page, path, btn_selectors, wait_ms, log, editor=None):
     """定位编辑器图片上传 input 并塞入文件；找不到 input 则先点工具栏图片按钮。"""
-    editor = page.locator('[contenteditable="true"]').first
+    if editor is None:
+        editor = page.locator('[contenteditable="true"]').first
     try:
         before = editor.locator("img").count()
     except Exception:
@@ -171,7 +178,7 @@ def _upload_image(page, path, btn_selectors, wait_ms, log):
     while time.time() < deadline:
         try:
             if editor.locator("img").count() > before:
-                return
+                return editor.locator('img').nth(before)
         except Exception:
             pass
         page.wait_for_timeout(500)

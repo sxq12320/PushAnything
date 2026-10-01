@@ -114,9 +114,9 @@ const TB_ITEMS = [
   { t: "插入图片", l: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
     f: _insImage },
   { sep: 1 },
-  { t: "行内公式 $…$", l: "∑", f: () => _wrap("$", "$", "E=mc^2") },
+  { t: "编写行内公式 $…$", l: "∑", f: () => openFormula(false) },
   { t: "独立公式 $$…$$", l: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 5H6l6 7-6 7h12"/></svg>',
-    f: () => _wrap("\n$$\n", "\n$$\n", "\\int_0^1 x^2\\,dx") },
+    f: () => openFormula(true) },
   { t: "表格", l: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="21"/></svg>',
     f: () => _ins("\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n") },
   { t: "分割线", l: "—", f: () => _ins("\n---\n") },
@@ -169,7 +169,7 @@ $("vditor").addEventListener("keydown", (e) => {
     _wrap("`", "`", "code");
   else if (k === "k" && e.shiftKey) _wrap("\n```\n", "\n```\n", "代码");
   else if (k === "k") _wrap("[", "](https://)", "链接文字");
-  else if (k === "m" && e.shiftKey) _wrap("$", "$", "E=mc^2");
+  else if (k === "m" && e.shiftKey) openFormula(false);
   else if (k === "t")
     _ins("\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n");
   else ok = false;
